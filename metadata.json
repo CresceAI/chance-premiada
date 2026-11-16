@@ -1,0 +1,6 @@
+{
+  "name": "Chance Premiada — Plataforma de Premiações Diárias & Blueprint Completo",
+  "description": "Plataforma interativa de premiações diárias transparentes via PIX (grade 01-75, Chance Coins, níveis de fidelidade, missões diárias, comunidade e indicações) acompanhada do plano completo de startup, UX/UI, marketing viral de 30 dias, automação e arquitetura MVP.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
