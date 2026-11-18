@@ -29,6 +29,7 @@ import {
   Users,
   Layers,
   Receipt,
+  Palette,
 } from 'lucide-react';
 import {
   AdminConfig,
@@ -54,6 +55,7 @@ import {
 } from '../utils/engine';
 import { databaseService } from '../services/database';
 import { EDITION_BANNER_PRESETS, resolveActiveBannerInfo } from '../utils/banners';
+import { DAILY_THEME_PRESETS, ThemePresetId, resolveActiveTheme } from '../utils/themeTokens';
 
 interface AdminPanelViewProps {
   adminConfig: AdminConfig;
@@ -103,6 +105,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
 }) => {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [adminSection, setAdminSection] = useState<
+    'operacao' | 'valores' | 'marketing' | 'compradores' | 'all'
+  >('operacao');
 
   // Manual 1st Ball Entry State + Target Edition Selector (Active vs Frozen Queue)
   const [manualBallInput, setManualBallInput] = useState<string>('25');
@@ -250,15 +255,15 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
 
   if (!isAdminAuthenticated) {
     return (
-      <div className="max-w-md mx-auto my-8 bg-white rounded-3xl border border-black/[0.08] p-6 sm:p-8 space-y-5 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[#F5F5F7] flex items-center justify-center mx-auto text-[#1D1D1F]">
-          <KeyRound className="w-5 h-5" />
+      <div className="max-w-md mx-auto my-8 bg-[#111512] rounded-3xl border border-white/[0.09] p-6 sm:p-8 space-y-5 text-center shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
+        <div className="size-12 rounded-2xl bg-[#171c18] border border-white/[0.09] flex items-center justify-center mx-auto text-[var(--brand-accent)]">
+          <KeyRound className="w-5 h-5" aria-hidden="true" />
         </div>
         <div className="space-y-1">
-          <h1 className="text-xl font-bold text-[#1D1D1F]">Acesso Restrito · Administrador</h1>
-          <p className="text-xs text-[#6E6E73]">
-            Área exclusiva para você digitar a 1ª bola do sorteio, ver quem ganhou, divulgar a
-            rodada e trocar valores.
+          <h1 className="text-xl font-extrabold text-[#f5f7f3]">Acesso Restrito · Administrador</h1>
+          <p className="text-xs text-[#929a94] leading-relaxed">
+            Área exclusiva para você digitar a 1ª bola do sorteio, aprovar PIX, divulgar a rodada e
+            configurar valores.
           </p>
         </div>
 
@@ -272,16 +277,16 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
             }}
             placeholder="Digite sua senha PIN de Administrador"
             aria-label="PIN do Administrador"
-            className="w-full px-4 py-3 text-center font-mono text-base bg-[#F5F5F7] focus:bg-white border border-transparent focus:border-[#1D1D1F] rounded-2xl focus:outline-none"
+            className="w-full px-4 py-3 text-center font-mono text-base text-[#f5f7f3] placeholder:text-[#747c76] bg-[#171c18] focus:bg-[#1e261f] border border-white/[0.1] focus:border-[var(--brand-accent)] rounded-2xl focus:outline-none"
           />
           {pinError && (
-            <p className="text-xs text-[#DC2626] font-medium">
+            <p className="text-xs text-[#f87171] font-medium" role="alert">
               PIN incorreto. Verifique sua senha de administrador.
             </p>
           )}
           <button
             type="submit"
-            className="w-full py-3.5 rounded-2xl bg-[#1D1D1F] hover:bg-[#333336] text-white text-sm font-semibold transition-colors cursor-pointer"
+            className="w-full py-3.5 rounded-2xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-sm font-extrabold transition-all cursor-pointer"
           >
             Entrar no Painel Admin
           </button>
@@ -397,58 +402,114 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
         </div>
       </div>
 
-      {/* Executive KPI Cards */}
+      {/* Executive KPI Cards (Dark Obsidian Surface) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-2xl border border-black/[0.06] p-4 shadow-2xs">
-          <span className="text-[11px] font-semibold text-[#6E6E73] block">Ocupação da Grade</span>
-          <strong className="text-lg font-extrabold font-mono text-[#1D1D1F]">
+        <div className="bg-[#111512] rounded-2xl border border-white/[0.09] p-4 shadow-2xs">
+          <span className="text-[11px] font-semibold text-[#929a94] block">Ocupação da Grade</span>
+          <strong className="text-lg font-extrabold font-mono text-[#f5f7f3] tabular-nums">
             {stats.sold}/75 ({stats.occupancyPct}%)
           </strong>
-          <span className="text-[11px] text-[#15803D] font-medium block mt-0.5">
+          <span className="text-[11px] text-[var(--brand-accent)] font-medium block mt-0.5 tabular-nums">
             {stats.available} números livres
           </span>
         </div>
 
-        <div className="bg-white rounded-2xl border border-black/[0.06] p-4 shadow-2xs">
-          <span className="text-[11px] font-semibold text-[#6E6E73] block">
+        <div className="bg-[#111512] rounded-2xl border border-white/[0.09] p-4 shadow-2xs">
+          <span className="text-[11px] font-semibold text-[#929a94] block">
             Receita da Grade Cheia (71 pagas)
           </span>
-          <strong className="text-lg font-extrabold font-mono text-[#1D1D1F]">
+          <strong className="text-lg font-extrabold font-mono text-[#f5f7f3] tabular-nums">
             R$ {grossCashRevenue.toFixed(2).replace('.', ',')}
           </strong>
-          <span className="text-[11px] text-[#6E6E73] block mt-0.5">
+          <span className="text-[11px] text-[#929a94] block mt-0.5 tabular-nums">
             Cota R$ {numTicket.toFixed(2).replace('.', ',')}
           </span>
         </div>
 
-        <div className="bg-white rounded-2xl border border-black/[0.06] p-4 shadow-2xs">
-          <span className="text-[11px] font-semibold text-[#6E6E73] block">
+        <div className="bg-[#111512] rounded-2xl border border-white/[0.09] p-4 shadow-2xs">
+          <span className="text-[11px] font-semibold text-[#929a94] block">
             Lucro Líquido / Edição
           </span>
           <strong
-            className={`text-lg font-extrabold font-mono ${
-              netProfitPerEdition >= 0 ? 'text-[#15803D]' : 'text-[#DC2626]'
+            className={`text-lg font-extrabold font-mono tabular-nums ${
+              netProfitPerEdition >= 0 ? 'text-[var(--brand-accent)]' : 'text-[#f87171]'
             }`}
           >
             R$ {netProfitPerEdition.toFixed(2).replace('.', ',')}
           </strong>
-          <span className="text-[11px] text-[#6E6E73] block mt-0.5">
+          <span className="text-[11px] text-[#929a94] block mt-0.5 tabular-nums">
             Após pagar R$ {numPrize} no PIX
           </span>
         </div>
 
-        <div className="bg-white rounded-2xl border border-black/[0.06] p-4 shadow-2xs">
-          <span className="text-[11px] font-semibold text-[#6E6E73] block">
-            Raspadinhas Premadas (1/15)
+        <div className="bg-[#111512] rounded-2xl border border-white/[0.09] p-4 shadow-2xs">
+          <span className="text-[11px] font-semibold text-[#929a94] block">
+            Raspadinhas Premiadas (1/15)
           </span>
-          <strong className="text-lg font-extrabold font-mono text-[#15803D]">
+          <strong className="text-lg font-extrabold font-mono text-[var(--brand-accent)] tabular-nums">
             {remainingBonusCartelas} de 4 restantes
           </strong>
-          <span className="text-[11px] text-[#6E6E73] block mt-0.5">
+          <span className="text-[11px] text-[#929a94] block mt-0.5 tabular-nums">
             Posições: {secretPositions.join(', ')}
           </span>
         </div>
       </div>
+
+      {/* Mobile-First 4-Tab Admin Navigation */}
+      {(() => {
+        const pendingCount = participations.filter(
+          (p) => p.status === 'Pagamento em Conferência'
+        ).length;
+        const tabs: {
+          id: 'operacao' | 'valores' | 'marketing' | 'compradores' | 'all';
+          label: string;
+          badge?: number;
+        }[] = [
+          { id: 'operacao', label: 'Operação Diária', badge: pendingCount > 0 ? pendingCount : undefined },
+          { id: 'valores', label: 'Valores, PIX & Tema' },
+          { id: 'marketing', label: 'Marketing & Clube' },
+          { id: 'compradores', label: `Clientes (${soldItems.length})` },
+          { id: 'all', label: 'Ver Tudo' },
+        ];
+        return (
+          <nav
+            aria-label="Seções do Painel Admin"
+            className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar"
+          >
+            {tabs.map((t) => {
+              const active = adminSection === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setAdminSection(t.id)}
+                  className={`px-3.5 py-2.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    active
+                      ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] shadow-xs'
+                      : 'bg-[#111512] text-[#929a94] hover:text-[#f5f7f3] border border-white/[0.09]'
+                  }`}
+                >
+                  <span>{t.label}</span>
+                  {t.badge !== undefined && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-extrabold tabular-nums ${
+                        active
+                          ? 'bg-[#0a0d0a] text-[var(--brand-accent)]'
+                          : 'bg-[#f59e0b] text-[#0a0d0a]'
+                      }`}
+                    >
+                      {t.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        );
+      })()}
+
+      {/* SEÇÃO 1: OPERAÇÃO DIÁRIA (Aprovar PIX + 1ª Bola + Fila de Edições) */}
+      <div className={adminSection === 'operacao' || adminSection === 'all' ? 'space-y-6' : 'hidden'}>
 
       {/* =====================================================================
           BLOCO 0.5: FILA DE APROVAÇÃO PIX DIRETO (TAXA ZERO · 1 CLIQUE)
@@ -461,26 +522,26 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
           <section
             className={`rounded-3xl border p-5 sm:p-6 space-y-4 ${
               pendingPayments.length > 0
-                ? 'bg-[#FFFBEB] border-[#F59E0B] shadow-xs'
-                : 'bg-white border-black/[0.06]'
+                ? 'bg-[#171c18] border-[#f59e0b]/60 shadow-xs'
+                : 'bg-[#111512] border-white/[0.09]'
             }`}
             data-testid="admin-pending-pix-queue"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#B45309] block">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#D9B85D] block">
                   Conferência PIX Direto · Taxa R$ 0,00
                 </span>
-                <h2 className="text-base sm:text-lg font-extrabold text-[#1D1D1F]">
+                <h2 className="text-base sm:text-lg font-extrabold text-[#f5f7f3]">
                   PIX Aguardando Sua Aprovação ({pendingPayments.length})
                 </h2>
-                <p className="text-xs text-[#6E6E73]">
-                  Confira a notificação do seu banco e clique em <strong>Aprovar PIX</strong> para
+                <p className="text-xs text-[#929a94]">
+                  Confira a notificação do seu banco e clique em <strong className="text-[#f5f7f3]">Aprovar PIX</strong> para
                   confirmar o número e liberar a Raspadinha do cliente.
                 </p>
               </div>
               {pendingPayments.length === 0 && (
-                <span className="px-3 py-1 rounded-full bg-[#F0FDF4] text-[#15803D] text-xs font-bold border border-[#BBF7D0]">
+                <span className="px-3 py-1 rounded-full bg-[var(--brand-accent)]/15 text-[var(--brand-accent)] text-xs font-bold border border-[var(--brand-accent)]/25">
                   Tudo conferido ✓
                 </span>
               )}
@@ -491,37 +552,37 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 {pendingPayments.map((p) => (
                   <div
                     key={p.id}
-                    className="p-3.5 rounded-2xl bg-white border border-black/[0.08] flex flex-wrap items-center justify-between gap-3"
+                    className="p-3.5 rounded-2xl bg-[#111512] border border-white/[0.09] flex flex-wrap items-center justify-between gap-3"
                   >
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <strong className="text-sm font-extrabold text-[#1D1D1F]">
+                        <strong className="text-sm font-extrabold text-[#f5f7f3]">
                           {p.customerName}
                         </strong>
-                        <span className="font-mono text-xs font-bold text-[#15803D] bg-[#F0FDF4] px-2 py-0.5 rounded-md border border-[#BBF7D0]">
+                        <span className="font-mono text-xs font-bold text-[var(--brand-accent)] bg-[var(--brand-accent)]/10 px-2 py-0.5 rounded-md border border-[var(--brand-accent)]/25">
                           Nº {p.numbers.join(', ')}
                         </span>
-                        <span className="font-mono text-xs font-extrabold text-[#063D2B] bg-[#B5F44A]/45 px-2 py-0.5 rounded-md">
+                        <span className="font-mono text-xs font-extrabold text-[#D9B85D] bg-[#D9B85D]/15 px-2 py-0.5 rounded-md">
                           R$ {p.amountPaid.toFixed(2).replace('.', ',')}
                         </span>
                       </div>
-                      <p className="text-[11px] font-mono text-[#6E6E73]">
+                      <p className="text-[11px] font-mono text-[#929a94]">
                         WhatsApp: {p.customerWhatsappFormatted} · Código: {p.pixTxId}
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={() => onApprovePendingPayment?.(p.id)}
-                        className="px-3.5 py-2 rounded-xl bg-[#063D2B] hover:bg-[#0B5339] text-[#B5F44A] text-xs font-extrabold cursor-pointer shadow-xs"
+                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold cursor-pointer shadow-xs"
                       >
                         Aprovar PIX ✓
                       </button>
                       <button
                         type="button"
                         onClick={() => onRejectPendingPayment?.(p.id)}
-                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#DC2626] border border-rose-200 text-xs font-bold cursor-pointer"
+                        className="px-3 py-2.5 rounded-xl bg-[#3f1515]/80 hover:bg-[#521b1b] text-[#fca5a5] border border-[#ef4444]/30 text-xs font-bold cursor-pointer"
                       >
                         Recusar / Liberar Nº
                       </button>
@@ -742,22 +803,37 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 disponível na aba pública de Resultados e extratos de comissão liberados abaixo.
               </span>
             </div>
-            {candidateInspection.buyerWhatsapp && (
-              <a
-                href={`https://wa.me/55${candidateInspection.buyerWhatsapp.replace(
-                  /\D/g,
-                  ''
-                )}?text=${encodeURIComponent(
-                  `Parabéns ${publishedWinner.winnerName}! A 1ª bola sorteada na Chance Premiada (${publishedWinner.editionNumber}) foi o seu número Nº ${publishedWinner.firstBallNumber}! Você ganhou R$ ${publishedWinner.prizeAmountBRL.toFixed(2).replace('.', ',')} no PIX!`
-                )}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2.5 rounded-xl bg-[#15803D] hover:bg-[#166534] text-white text-xs font-bold flex items-center gap-1.5"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>Avisar Ganhador no WhatsApp</span>
-              </a>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {candidateInspection.buyerWhatsapp && (
+                <a
+                  href={`https://wa.me/55${candidateInspection.buyerWhatsapp.replace(
+                    /\D/g,
+                    ''
+                  )}?text=${encodeURIComponent(
+                    `Parabéns ${publishedWinner.winnerName}! A 1ª bola sorteada na Chance Premiada (${publishedWinner.editionNumber}) foi o seu número Nº ${publishedWinner.firstBallNumber}! Você ganhou R$ ${publishedWinner.prizeAmountBRL.toFixed(2).replace('.', ',')} no PIX!`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-[#15803D] hover:bg-[#166534] text-white text-xs font-bold flex items-center gap-1.5"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Avisar Ganhador no WhatsApp</span>
+                </a>
+              )}
+              {onFreezeAndAdvanceEdition && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onFreezeAndAdvanceEdition();
+                    setPublishedWinner(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-[#073D2B] hover:bg-[#0A523A] text-[#c8ff37] text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>Encerrar Rodada & Abrir Próxima (0/75)</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
       </section>
@@ -865,6 +941,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
         )}
       </section>
 
+      </div>
+
+      {/* SEÇÃO 2: MARKETING & AFILIADOS */}
+      <div className={adminSection === 'marketing' || adminSection === 'all' ? 'space-y-6' : 'hidden'}>
       {/* =====================================================================
           BLOCO 1.8: EQUIPE DE AFILIADOS / DIVULGADORES + COMPROVANTE AUTOMÁTICO DE COMISSÃO
       ===================================================================== */}
@@ -1415,6 +1495,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
         </div>
       </section>
 
+      </div>
+
+      {/* SEÇÃO 3: VALORES, PIX & TEMA */}
+      <div className={adminSection === 'valores' || adminSection === 'all' ? 'space-y-6' : 'hidden'}>
       {/* =====================================================================
           BLOCO 2.5: COMUNIDADE DE RESULTADOS (TELEGRAM & WHATSAPP) + PAGAMENTO PIX (ASAAS + 2ª OPÇÃO)
       ===================================================================== */}
@@ -1879,6 +1963,90 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
           );
         })()}
 
+        {/* 1-Click Automatic Daily Color Rotation Selector */}
+        <div className="pt-4 border-t border-black/[0.06] space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-extrabold text-[#1D1D1F] flex items-center gap-1.5">
+                <Palette className="w-4 h-4 text-[var(--brand-primary)]" />
+                <span>Cor do App (Troca Automática Diária)</span>
+              </h3>
+              <p className="text-[11px] text-[#6E6E73]">
+                Alterne em 1 clique entre rotação automática diária ou uma paleta fixa sem alterar regras de negócio.
+              </p>
+            </div>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#F4F5F7] text-[#202124] border border-black/[0.06] self-start sm:self-auto">
+              Ativo hoje: {resolveActiveTheme(adminConfig.themePreference || 'auto_daily').name}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                onUpdateAdminConfig({
+                  ...adminConfig,
+                  themePreference: 'auto_daily',
+                })
+              }
+              className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                (adminConfig.themePreference || 'auto_daily') === 'auto_daily'
+                  ? 'border-[var(--brand-primary)] bg-[#F0FDF4] ring-2 ring-[var(--brand-primary)]/20'
+                  : 'border-black/[0.08] bg-white hover:bg-[#F5F5F7]'
+              }`}
+            >
+              <span className="size-7 rounded-full bg-gradient-to-br from-[#073D2B] via-[#B5F44A] to-[#0A5C99] shrink-0 border border-black/10" />
+              <div className="min-w-0">
+                <span className="text-xs font-extrabold text-[#1D1D1F] block truncate">
+                  Automático
+                </span>
+                <span className="text-[10px] text-[#6E6E73] block truncate">
+                  Muda todo dia
+                </span>
+              </div>
+            </button>
+
+            {DAILY_THEME_PRESETS.map((preset) => {
+              const isSelected = adminConfig.themePreference === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() =>
+                    onUpdateAdminConfig({
+                      ...adminConfig,
+                      themePreference: preset.id as ThemePresetId,
+                    })
+                  }
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                    isSelected
+                      ? 'border-[var(--brand-primary)] bg-[#F0FDF4] ring-2 ring-[var(--brand-primary)]/20'
+                      : 'border-black/[0.08] bg-white hover:bg-[#F5F5F7]'
+                  }`}
+                >
+                  <span
+                    className="size-7 rounded-full shrink-0 border border-black/10 flex items-center justify-center"
+                    style={{ backgroundColor: preset.primary }}
+                  >
+                    <span
+                      className="size-3 rounded-full"
+                      style={{ backgroundColor: preset.accent }}
+                    />
+                  </span>
+                  <div className="min-w-0">
+                    <span className="text-xs font-extrabold text-[#1D1D1F] block truncate">
+                      {preset.name}
+                    </span>
+                    <span className="text-[10px] text-[#6E6E73] block truncate">
+                      Paleta fixa
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <form
           onSubmit={handleSaveCustomValues}
           className="pt-4 border-t border-black/[0.06] grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
@@ -1957,6 +2125,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
         </div>
       </section>
 
+      </div>
+
+      {/* SEÇÃO 2 (CONTINUAÇÃO): CLUBE DE PARCEIROS */}
+      <div className={adminSection === 'marketing' || adminSection === 'all' ? 'space-y-6' : 'hidden'}>
       {/* =====================================================================
           BLOCO 4.5: REDE DE COMÉRCIOS & CUPONS DE MARACANAÚ (ESTILO IFOOD / ZÉ DELIVERY ADS)
       ===================================================================== */}
@@ -2174,6 +2346,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
         </div>
       </section>
 
+      </div>
+
+      {/* SEÇÃO 4: COMPRADORES (CRM) */}
+      <div className={adminSection === 'compradores' || adminSection === 'all' ? 'space-y-6' : 'hidden'}>
       {/* =====================================================================
           BLOCO 5: LISTA COMPLETA DE COMPRADORES + EXPORTAÇÃO CARTEIRA CRM (CSV)
       ===================================================================== */}
@@ -2290,6 +2466,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 };

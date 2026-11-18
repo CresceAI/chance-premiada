@@ -367,7 +367,7 @@ export const databaseService = {
       apikey: creds.key,
       Authorization: `Bearer ${creds.key}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
     };
 
     try {
@@ -406,7 +406,7 @@ export const databaseService = {
       apikey: creds.key,
       Authorization: `Bearer ${creds.key}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
     };
 
     try {
@@ -454,7 +454,7 @@ export const databaseService = {
       apikey: creds.key,
       Authorization: `Bearer ${creds.key}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
     };
 
     try {
@@ -698,7 +698,7 @@ export const databaseService = {
       apikey: creds.key,
       Authorization: `Bearer ${creds.key}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
     };
 
     try {
@@ -754,6 +754,7 @@ export const databaseService = {
           status: targetGridStatus,
           owner_name: record.customerName,
           owner_whatsapp: record.customerWhatsapp,
+          pix_tx_id: encodedPixTxId,
           reserved_until: null,
         };
         const gridPatchRes = await fetch(

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   GridNumber,
@@ -14,12 +14,14 @@ import {
   getPublicParticipantsFeed,
   generateVisualQrMatrix,
   calculateComboPricing,
+  calculateSafeFinalAmount,
   getAvailableNeighbors,
   DEFAULT_PARTNER_COUPONS,
 } from '../utils/engine';
 import { databaseService } from '../services/database';
 import { ScratchCardWidget } from './ScratchCardWidget';
 import { PARTNER_AD_SHOWCASE_BANNERS, resolveActiveBannerInfo } from '../utils/banners';
+import chancePremiadaLogo from '../assets/images/chance-premiada.svg';
 import {
   Shuffle,
   Copy,
@@ -74,7 +76,10 @@ interface HomeAndGridViewProps {
     pendingVerification?: boolean;
   }) => ParticipationRecord;
   onScratchRevealed: (participationId: string) => void;
-  onNavigateTab: (tab: 'home' | 'how-to-play' | 'lookup' | 'results' | 'admin') => void;
+  onNavigateTab: (
+    tab: 'home' | 'numbers' | 'how-to-play' | 'lookup' | 'profile' | 'results' | 'admin'
+  ) => void;
+  mobileFocusMode?: 'overview' | 'grid';
 }
 
 function formatPhoneMask(raw: string): string {
@@ -87,6 +92,59 @@ function formatPhoneMask(raw: string): string {
   }
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
+
+interface GridCellButtonProps {
+  item: GridNumber;
+  isSelected: boolean;
+  onSelect: (num: number) => void;
+}
+
+const GridCellButton = React.memo<GridCellButtonProps>(
+  ({ item, isSelected, onSelect }) => {
+    const isAvailable = item.status === 'available';
+    const isReserved = item.status === 'reserved';
+
+    let cellStyle = '';
+    if (isSelected) {
+      cellStyle =
+        'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] ring-2 ring-[var(--brand-accent)] ring-offset-2 ring-offset-[#111512] cursor-pointer font-extrabold shadow-[0_0_20px_rgba(200,255,55,0.22)]';
+    } else if (isAvailable) {
+      cellStyle =
+        'bg-[#171c18] hover:bg-[#1e261f] text-[#f5f7f3] border border-white/[0.09] hover:border-[var(--brand-accent)]/40 cursor-pointer active:scale-95';
+    } else if (isReserved) {
+      cellStyle =
+        'bg-[#3f1515]/80 text-[#fca5a5] border border-[#ef4444]/30 cursor-not-allowed';
+    } else {
+      cellStyle =
+        'bg-white/[0.03] text-[#4b524d] border border-white/[0.04] cursor-not-allowed';
+    }
+
+    return (
+      <button
+        type="button"
+        disabled={!isAvailable}
+        onClick={() => onSelect(item.number)}
+        aria-label={`Número ${item.formatted} ${
+          isSelected
+            ? 'selecionado'
+            : isAvailable
+            ? 'disponível'
+            : isReserved
+            ? 'reservado'
+            : 'vendido'
+        }`}
+        className={`relative h-11 rounded-xl font-mono text-sm font-bold tabular-nums flex items-center justify-center transition-transform duration-150 select-none ${cellStyle}`}
+      >
+        <span>{item.formatted}</span>
+        {isSelected && (
+          <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] flex items-center justify-center shadow-xs">
+            <Check className="w-2.5 h-2.5 stroke-[3]" aria-hidden="true" />
+          </span>
+        )}
+      </button>
+    );
+  }
+);
 
 export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
   grid,
@@ -110,6 +168,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
   onCompletePurchase,
   onScratchRevealed,
   onNavigateTab,
+  mobileFocusMode = 'overview',
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'sold'>('all');
   const [name, setName] = useState(customerProfile?.name || '');
@@ -140,6 +199,24 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
   const [showStoriesModal, setShowStoriesModal] = useState(false);
   const [customSellerCode, setCustomSellerCode] = useState(activeAffiliate?.code || '');
   const [copiedStoriesLink, setCopiedStoriesLink] = useState(false);
+  const [favoriteNumber, setFavoriteNumber] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('cp_favorite_number');
+      const parsed = saved ? Number(saved) : NaN;
+      return Number.isInteger(parsed) && parsed >= 1 && parsed <= 75 ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleSaveFavoriteNumber = (num: number) => {
+    setFavoriteNumber(num);
+    try {
+      localStorage.setItem('cp_favorite_number', String(num));
+    } catch {
+      // ignore storage quota errors
+    }
+  };
 
   const activeDiscountBRL =
     externalDiscountBRL !== undefined ? externalDiscountBRL : localDiscountBRL;
@@ -196,19 +273,44 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
     return `${m}:${s}`;
   };
 
-  const stats = getGridStats(grid);
-  const publicParticipants = getPublicParticipantsFeed(grid, participations);
-  const ticketPriceBRL = adminConfig.ticketPriceBRL;
-  const activeBannerInfo = resolveActiveBannerInfo(
-    adminConfig.prizeAmountBRL,
-    ticketPriceBRL,
-    adminConfig.customBannerUrl
+  const stats = useMemo(() => getGridStats(grid), [grid]);
+  const publicParticipants = useMemo(
+    () => getPublicParticipantsFeed(grid, participations),
+    [grid, participations]
   );
-  const comboPricing = calculateComboPricing(selectedNumbers.length, ticketPriceBRL);
-  const availableNeighbors = getAvailableNeighbors(grid, selectedNumbers);
-  const subtotalBRL = comboPricing.comboTotalBRL;
-  const appliedDiscount = Math.min(activeDiscountBRL, subtotalBRL * 0.5);
-  const finalAmountBRL = Math.max(0, subtotalBRL - appliedDiscount);
+  const syncedLastRecord = useMemo(
+    () =>
+      lastRecord ? participations.find((p) => p.id === lastRecord.id) || lastRecord : null,
+    [lastRecord, participations]
+  );
+  const ticketPriceBRL = adminConfig.ticketPriceBRL;
+  const activeBannerInfo = useMemo(
+    () =>
+      resolveActiveBannerInfo(
+        adminConfig.prizeAmountBRL,
+        ticketPriceBRL,
+        adminConfig.customBannerUrl
+      ),
+    [adminConfig.prizeAmountBRL, ticketPriceBRL, adminConfig.customBannerUrl]
+  );
+  const {
+    comboPricing,
+    subtotalBRL,
+    appliedDiscountBRL: appliedDiscount,
+    finalAmountBRL,
+  } = useMemo(
+    () =>
+      calculateSafeFinalAmount(
+        selectedNumbers.length,
+        ticketPriceBRL,
+        activeDiscountBRL
+      ),
+    [selectedNumbers.length, ticketPriceBRL, activeDiscountBRL]
+  );
+  const availableNeighbors = useMemo(
+    () => getAvailableNeighbors(grid, selectedNumbers),
+    [grid, selectedNumbers]
+  );
 
   const secretPositions =
     Array.isArray(adminConfig.secretScratchPositions) &&
@@ -217,11 +319,27 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
       : [7, 22, 39, 53];
   const remainingBonusCartelas = secretPositions.filter((pos) => pos > stats.sold).length;
 
-  const filteredGrid = grid.filter((item) => {
-    if (statusFilter === 'all') return true;
-    if (statusFilter === 'available') return item.status === 'available';
-    return item.status === 'sold' || item.status === 'reserved';
-  });
+  const filteredGrid = useMemo(
+    () =>
+      grid.filter((item) => {
+        if (statusFilter === 'all') return true;
+        if (statusFilter === 'available') return item.status === 'available';
+        return item.status === 'sold' || item.status === 'reserved';
+      }),
+    [grid, statusFilter]
+  );
+
+  const handleGridCellClick = useCallback(
+    (num: number) => {
+      if (pixStep !== 'form') {
+        onReleaseReservedNumbers(selectedNumbers);
+        setPixStep('form');
+        setLastRecord(null);
+      }
+      onToggleNumber(num);
+    },
+    [pixStep, selectedNumbers, onReleaseReservedNumbers, onToggleNumber]
+  );
 
   const handleGeneratePix = (e: React.FormEvent) => {
     e.preventDefault();
@@ -316,8 +434,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
       }
     }
 
-    const isDirectZeroFee =
-      adminConfig.paymentMode === 'direct_pix_zero_fee' && !forceSimulate;
+    const isDirectZeroFee = isDirectPixMode && !forceSimulate;
 
     const created = onCompletePurchase({
       name: name.trim(),
@@ -406,11 +523,12 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            className="bg-gradient-to-r from-[#15803D] to-[#16A34A] text-white rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm"
+            transition={{ duration: 0.16 }}
+            className="bg-[var(--brand-primary)] text-white rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm"
           >
             <div className="flex items-center gap-2.5 text-xs sm:text-sm">
-              <span className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                <Gift className="w-4 h-4 text-white" />
+              <span className="size-7 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+                <Gift className="w-4 h-4 text-[var(--brand-accent)]" aria-hidden="true" />
               </span>
               <div>
                 <strong className="font-bold">
@@ -439,8 +557,25 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* OFFICIAL EDITION HERO + AUTOMATIC ARTWORK BANNER */}
-      <section className="relative overflow-hidden bg-[#063D2B] text-white rounded-3xl border border-black/[0.08] p-4 sm:p-6 space-y-5 shadow-[0_8px_28px_rgba(6,61,43,0.12)]">
+      {/* OFFICIAL EDITION HERO — Chance Premiada Premium Redesign (Obsidian + Electric Lime + Orbital Ball) */}
+      <section
+        className={`${
+          mobileFocusMode === 'grid' ? 'hidden lg:block' : 'block'
+        } relative overflow-hidden redesign-hero text-[#f5f7f3] rounded-[34px] p-5 sm:p-8 lg:p-12 space-y-6`}
+      >
+        {/* Subtle 42px Tech Grid Overlay & Lime Glow */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-15 redesign-hero-grid"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-8 right-6 w-[380px] h-[380px] rounded-full blur-xl opacity-80"
+          style={{
+            background:
+              'radial-gradient(circle, rgba(184, 255, 46, 0.22), rgba(78, 235, 31, 0.08) 38%, transparent 70%)',
+          }}
+        />
         {/* AUTOMATIC EDITION ARTWORK BANNER (Changes automatically when Admin changes prize/ticket values!) */}
         {activeBannerInfo.hasExactHorizontalBanner && (
           <div
@@ -496,245 +631,429 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
           </div>
         )}
 
-        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-3 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/80">
-              <span className="font-bold text-[#063D2B] bg-[#B5F44A] px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-[#063D2B]" />
-                <span>Edição #{adminConfig.editionNumber}</span>
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+          <div className="space-y-4 max-w-xl relative z-10">
+            <div className="flex flex-wrap items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.08em]">
+              <span className="border border-[var(--brand-accent)]/25 bg-[var(--brand-accent)]/10 text-[var(--brand-accent)] px-3 py-1.5 rounded-full inline-flex items-center gap-2">
+                <span className="size-[7px] rounded-full bg-[var(--brand-accent)] shadow-[0_0_0_5px_rgba(200,255,55,0.12)]" />
+                <span>Edição #{adminConfig.editionNumber} · Ao vivo</span>
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-white/90">
-                Grade 01 a 75
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-white/90 tabular-nums">
+              <span className="px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-[#929a94] tabular-nums">
                 {activeViewersCount} online
               </span>
               {adminConfig.scratchEnabled && (
-                <span className="text-[#0A1713] bg-[#D5AC58] px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1">
+                <span className="text-[#0a0d0a] bg-[#D9B85D] px-3 py-1.5 rounded-full font-extrabold inline-flex items-center gap-1">
                   <Sparkles className="size-3" /> Raspadinha inclusa
                 </span>
               )}
               {activeAffiliate && (
                 <span
-                  className="text-[#063D2B] bg-[#F5F0E5] px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1"
+                  className="text-[#0a0d0a] bg-[var(--brand-accent)] px-3 py-1.5 rounded-full font-extrabold inline-flex items-center gap-1"
                   data-testid="active-affiliate-badge"
                 >
-                  <CheckCircle2 className="size-3 text-[#16A34A]" />
+                  <CheckCircle2 className="size-3" />
                   <span>Indicação: {activeAffiliate.name}</span>
                 </span>
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-[28px] lg:text-[30px] font-extrabold text-white tracking-tight leading-[1.18] text-balance">
-              Escolha seu número. Saiu na 1ª bola do sorteio, você leva{' '}
-              <span className="text-[#B5F44A] tabular-nums">
-                R$ {adminConfig.prizeAmountBRL.toFixed(2).replace('.00', '')} no PIX
-              </span>
-              .
-            </h1>
-
-            <p className="text-sm text-white/80 leading-relaxed text-pretty">
-              Cota única de{' '}
-              <strong className="text-white font-bold tabular-nums">
-                R$ {ticketPriceBRL.toFixed(2).replace('.', ',')}
-              </strong>
-              . Ao confirmar o PIX, você recebe na hora 1 Raspadinha Digital com chance de ganhar
-              cartela extra grátis ou desconto imediato.
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[var(--brand-accent)]">
+              Sorteio do dia · Grade 01 a 75
             </p>
 
-            <div className="pt-0.5 flex flex-wrap items-center gap-2">
+            <h1 className="text-3xl sm:text-5xl font-bold text-[#f5f7f3] tracking-[-0.04em] leading-[1.02] text-balance">
+              Seu número pode valer{' '}
+              <em className="not-italic font-extrabold text-[var(--brand-accent)] tabular-nums">
+                R$ {adminConfig.prizeAmountBRL.toFixed(2).replace('.00', '')}
+              </em>{' '}
+              hoje.
+            </h1>
+
+            <p className="text-sm sm:text-[15px] text-[#a8b0aa] leading-relaxed text-pretty max-w-lg">
+              Escolha de 01 a 75 por{' '}
+              <strong className="text-[#f5f7f3] font-bold tabular-nums">
+                R$ {ticketPriceBRL.toFixed(2).replace('.', ',')}
+              </strong>
+              . Se o seu número sair na 1ª bola, o PIX é seu — mais 1 Raspadinha Digital na hora.
+            </p>
+
+            <div className="pt-1 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onNavigateTab('numbers')}
+                className="w-full sm:w-auto px-5 py-3.5 rounded-[14px] bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold transition-transform duration-150 hover:-translate-y-0.5 cursor-pointer inline-flex items-center justify-center gap-2.5 shadow-[0_12px_35px_rgba(200,255,55,0.18)]"
+              >
+                <span>Escolher meus números</span>
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </button>
               <button
                 type="button"
                 onClick={() => onNavigateTab('how-to-play')}
-                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/10 text-xs font-semibold transition-colors duration-150 cursor-pointer inline-flex items-center gap-1.5"
+                className="px-4 py-3 rounded-[14px] bg-white/[0.05] hover:bg-white/[0.1] text-[#f5f7f3] border border-white/[0.09] text-xs font-bold transition-colors duration-150 cursor-pointer inline-flex items-center gap-1.5"
               >
-                <Zap className="size-3.5 text-[#B5F44A]" />
-                <span>Como funciona em 30s</span>
+                <Zap className="size-3.5 text-[var(--brand-accent)]" aria-hidden="true" />
+                <span>Como funciona</span>
               </button>
               <button
                 type="button"
                 onClick={() => setShowStoriesModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-[#D5AC58] hover:bg-[#e0ba6c] text-[#0A1713] text-xs font-bold transition-colors duration-150 cursor-pointer inline-flex items-center gap-1.5"
+                className="px-4 py-3 rounded-[14px] bg-[#D9B85D]/15 hover:bg-[#D9B85D]/25 text-[#D9B85D] border border-[#D9B85D]/30 text-xs font-bold transition-colors duration-150 cursor-pointer inline-flex items-center gap-1.5"
                 data-testid="open-stories-card-button"
               >
-                <Share2 className="size-3.5 text-[#0A1713]" />
-                <span>Divulgar e ganhar comissão</span>
+                <Share2 className="size-3.5" aria-hidden="true" />
+                <span>Ganhar 20%</span>
               </button>
+            </div>
+
+            {/* Hero Bottom Stats Strip (Redesign Pattern) */}
+            <div className="pt-3 flex flex-wrap items-center gap-6 text-xs">
+              <div className="flex items-baseline gap-1.5">
+                <strong className="text-sm font-extrabold text-[#e9eee9] tabular-nums" data-testid="stat-available">
+                  {stats.available}
+                </strong>
+                <span className="text-[11px] text-[#747c76]">disponíveis</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <strong className="text-sm font-extrabold text-[#e9eee9] tabular-nums" data-testid="sold-progress-count">
+                  {stats.sold} / 75
+                </strong>
+                <span className="text-[11px] text-[#747c76]">já escolhidos</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <strong className="text-sm font-extrabold text-[var(--brand-accent)] tabular-nums">
+                  R$ {ticketPriceBRL.toFixed(2).replace('.', ',')}
+                </strong>
+                <span className="text-[11px] text-[#747c76]">por número</span>
+              </div>
+              {adminConfig.scratchEnabled && (
+                <div className="flex items-baseline gap-1.5">
+                  <strong className="text-sm font-extrabold text-[#D9B85D] tabular-nums">
+                    {remainingBonusCartelas} de 4
+                  </strong>
+                  <span className="text-[11px] text-[#747c76]">bônus na raspadinha</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Live Thermometer & Stacked Avatars Card */}
-          <div className="lg:w-80 bg-white text-[#151515] rounded-2xl p-4 sm:p-5 space-y-3 shrink-0 shadow-md border border-black/[0.06]">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[#151515] font-bold flex items-center gap-1.5">
-                <Flame className="size-4 text-[#16A34A]" />
-                <span>Andamento da edição</span>
-              </span>
-              <span
-                className="font-mono font-bold text-[#063D2B] tabular-nums bg-[#F2F4F7] px-2.5 py-0.5 rounded-full"
-                data-testid="sold-progress-count"
+          {/* Right Orbital 3D Ball + Floating Glass Cards (Mobile + Desktop Showcase) */}
+          <div className="flex relative w-full lg:w-[390px] h-[250px] lg:h-[340px] items-center justify-center shrink-0">
+            <div
+              aria-hidden="true"
+              className="absolute size-[235px] lg:size-[330px] rounded-full border border-[var(--brand-accent)]/15 redesign-orbit-1"
+            >
+              <span className="absolute left-7 top-7 lg:left-9 lg:top-9 size-2.5 rounded-full bg-[var(--brand-accent)] shadow-[0_0_18px_#c8ff37]" />
+            </div>
+            <div
+              aria-hidden="true"
+              className="absolute size-[185px] lg:size-[250px] rounded-full border border-dashed border-[var(--brand-accent)]/20 redesign-orbit-2"
+            />
+            <div className="relative size-[152px] lg:size-[196px] rounded-full redesign-ball flex flex-col items-center justify-center select-none">
+              <span className="text-[8px] lg:text-[9px] font-extrabold tracking-[0.18em]">PIX 1ª BOLA</span>
+              <b
+                className={`${
+                  adminConfig.prizeAmountBRL >= 100
+                    ? 'text-[44px] lg:text-[62px]'
+                    : 'text-[56px] lg:text-[76px]'
+                } font-extrabold tracking-[-0.08em] leading-[0.9] tabular-nums`}
               >
-                {stats.sold} / 75 vendidos
-              </span>
+                {adminConfig.prizeAmountBRL.toFixed(2).replace('.00', '')}
+              </b>
+              <small className="text-[9px] lg:text-[10px] font-bold mt-1">reais no PIX</small>
             </div>
 
-            <div className="w-full h-2.5 bg-[#F2F4F7] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#16A34A] rounded-full transition-all duration-300"
-                style={{ width: `${Math.max(4, (stats.sold / 75) * 100)}%` }}
-              />
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-[#6E6E73]">
-              <span className="font-bold text-[#15803D] tabular-nums" data-testid="stat-available">
-                {stats.available} disponíveis
-              </span>
-              <div className="flex items-center gap-1.5">
-                {publicParticipants.length > 0 && (
-                  <div className="flex -space-x-1.5">
-                    {publicParticipants.slice(0, 3).map((p) => (
-                      <span
-                        key={p.id}
-                        className="size-5 rounded-full bg-[#063D2B] text-white border border-white text-[9px] font-bold flex items-center justify-center"
-                      >
-                        {p.maskedName.slice(0, 2).toUpperCase()}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <span className="font-medium tabular-nums">
-                  Faltam {stats.remainingToDraw} p/ sortear
-                </span>
+            <div className="absolute top-3 right-1 lg:top-6 lg:right-2 flex items-center gap-2 px-3 py-2 lg:px-3.5 lg:py-2.5 rounded-[14px] liquid-glass-dark">
+              <span className="size-2 rounded-full bg-[var(--brand-accent)] shadow-[0_0_0_5px_rgba(200,255,55,0.14)]" />
+              <div className="leading-tight">
+                <b className="text-[11px] lg:text-xs font-extrabold text-white block tabular-nums">
+                  R$ {adminConfig.prizeAmountBRL.toFixed(2).replace('.00', '')}
+                </b>
+                <small className="text-[9px] lg:text-[10px] text-[#929a94] block">Prêmio no PIX</small>
               </div>
             </div>
 
-            {adminConfig.scratchEnabled && (
-              <div className="pt-2 border-t border-black/[0.06] flex items-center justify-between text-[11px]">
-                <span className="text-[#6E6E73] flex items-center gap-1 font-medium">
-                  <Gift className="size-3.5 text-[#15803D]" /> Bônus na raspadinha:
-                </span>
-                <span className="font-mono font-bold text-[#063D2B] tabular-nums">
-                  {remainingBonusCartelas} de 4 restantes
-                </span>
+            <div className="absolute bottom-3 left-1 lg:bottom-6 lg:left-0 flex items-center gap-2 px-3 py-2 lg:px-3.5 lg:py-2.5 rounded-[14px] liquid-glass-dark">
+              <Sparkles className="size-3.5 lg:size-4 text-[var(--brand-accent)]" aria-hidden="true" />
+              <div className="leading-tight">
+                <b className="text-[11px] lg:text-xs font-extrabold text-white block">Raspadinha</b>
+                <small className="text-[9px] lg:text-[10px] text-[#929a94] block">Bônus instantâneo</small>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 4 QUICK-ACCESS NATIVE APP SQUIRCLES */}
+      {/* 4 QUICK-ACCESS REDESIGN CARDS (Obsidian + Electric Lime) */}
       <section
         aria-label="Atalhos Rápidos do App"
-        className="grid grid-cols-4 gap-2 sm:gap-3"
+        className={`${
+          mobileFocusMode === 'grid' ? 'hidden lg:block' : 'block'
+        } space-y-4`}
       >
-        <button
-          type="button"
-          onClick={() => {
-            if (pixStep !== 'form') {
-              onReleaseReservedNumbers(selectedNumbers);
-              setPixStep('form');
-              setLastRecord(null);
-            }
-            onSelectRandom();
-            scrollToCheckout();
-          }}
-          className="bg-white hover:bg-[#FAFAFA] border border-black/[0.06] rounded-2xl p-2.5 sm:p-3.5 flex flex-col items-center text-center gap-1.5 transition-colors duration-150 active:scale-[0.98] cursor-pointer"
-        >
-          <span className="size-10 rounded-xl bg-[#F2F4F7] text-[#063D2B] flex items-center justify-center">
-            <Shuffle className="size-4 text-[#063D2B]" />
-          </span>
-          <span className="text-[11px] sm:text-xs font-bold text-[#151515] leading-tight">
-            Surpresinha
-          </span>
-          <span className="text-[10px] text-[#6E6E73] hidden sm:block tabular-nums">
-            1 Nº por R$ {ticketPriceBRL.toFixed(2).replace('.', ',')}
-          </span>
-        </button>
+        <div className="flex items-end justify-between">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[var(--brand-accent)] block">
+              Mais rápido
+            </span>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#f5f7f3] tracking-tight">
+              O que você quer fazer?
+            </h2>
+          </div>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            if (pixStep !== 'form') {
-              onReleaseReservedNumbers(selectedNumbers);
-              setPixStep('form');
-              setLastRecord(null);
-            }
-            if (onSelectExactComboPackage) {
-              onSelectExactComboPackage(5);
-            } else if (onSelectMultipleRandom) {
-              onSelectMultipleRandom(5);
-            }
-            scrollToCheckout();
-          }}
-          className="bg-white hover:bg-[#FAFAFA] border border-black/[0.06] rounded-2xl p-2.5 sm:p-3.5 flex flex-col items-center text-center gap-1.5 transition-colors duration-150 active:scale-[0.98] cursor-pointer"
-        >
-          <span className="size-10 rounded-xl bg-[#ECFDF5] text-[#15803D] flex items-center justify-center">
-            <Flame className="size-4 text-[#15803D]" />
-          </span>
-          <span className="text-[11px] sm:text-xs font-bold text-[#151515] leading-tight">
-            Combo 5 Nºs
-          </span>
-          <span className="text-[10px] text-[#15803D] font-semibold hidden sm:block tabular-nums">
-            Por R$ {calculateComboPricing(5, ticketPriceBRL).comboTotalBRL.toFixed(2).replace('.', ',')}
-          </span>
-        </button>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (pixStep !== 'form') {
+                onReleaseReservedNumbers(selectedNumbers);
+                setPixStep('form');
+                setLastRecord(null);
+              }
+              onSelectRandom();
+              scrollToCheckout();
+            }}
+            className="min-h-[96px] bg-[#111512] hover:bg-[#151b15] border border-white/[0.09] hover:border-[var(--brand-accent)]/35 rounded-[20px] p-4 flex items-center text-left gap-3 transition-all duration-150 hover:-translate-y-0.5 cursor-pointer"
+          >
+            <span className="size-11 rounded-[13px] bg-[var(--brand-accent)] text-[#10130f] flex items-center justify-center shrink-0">
+              <Shuffle className="size-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <b className="text-xs font-extrabold text-[#f5f7f3] block truncate">Surpresinha</b>
+              <small className="text-[10px] text-[#798179] block mt-0.5 tabular-nums truncate">
+                1 Nº por R$ {ticketPriceBRL.toFixed(2).replace('.', ',')}
+              </small>
+            </div>
+            <ArrowRight className="size-4 text-[#798179] hidden sm:block shrink-0" aria-hidden="true" />
+          </button>
 
-        <button
-          type="button"
-          onClick={() => onNavigateTab('lookup')}
-          className="bg-white hover:bg-[#FAFAFA] border border-black/[0.06] rounded-2xl p-2.5 sm:p-3.5 flex flex-col items-center text-center gap-1.5 transition-colors duration-150 active:scale-[0.98] cursor-pointer"
-        >
-          <span className="size-10 rounded-xl bg-[#FEF3C7]/70 text-[#B45309] flex items-center justify-center">
-            <Gift className="size-4 text-[#B45309]" />
-          </span>
-          <span className="text-[11px] sm:text-xs font-bold text-[#151515] leading-tight">
-            Parceiros
-          </span>
-          <span className="text-[10px] text-[#6E6E73] hidden sm:block">
-            Cupons locais
-          </span>
-        </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (pixStep !== 'form') {
+                onReleaseReservedNumbers(selectedNumbers);
+                setPixStep('form');
+                setLastRecord(null);
+              }
+              if (onSelectExactComboPackage) {
+                onSelectExactComboPackage(5);
+              } else if (onSelectMultipleRandom) {
+                onSelectMultipleRandom(5);
+              }
+              scrollToCheckout();
+            }}
+            className="min-h-[96px] bg-[#111512] hover:bg-[#151b15] border border-white/[0.09] hover:border-[var(--brand-accent)]/35 rounded-[20px] p-4 flex items-center text-left gap-3 transition-all duration-150 hover:-translate-y-0.5 cursor-pointer"
+          >
+            <span className="size-11 rounded-[13px] bg-[#222822] text-[#c7cec8] flex items-center justify-center shrink-0">
+              <Flame className="size-4 text-[var(--brand-accent)]" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <b className="text-xs font-extrabold text-[#f5f7f3] block truncate">Combo 5 Nºs</b>
+              <small className="text-[10px] text-[#798179] block mt-0.5 tabular-nums truncate">
+                R$ {calculateComboPricing(5, ticketPriceBRL).comboTotalBRL.toFixed(2).replace('.', ',')}
+              </small>
+            </div>
+            <span className="px-1.5 py-1 rounded-md bg-[var(--brand-accent)]/15 text-[var(--brand-accent)] text-[9px] font-extrabold tracking-wider shrink-0 hidden sm:inline-block">
+              POPULAR
+            </span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setShowStoriesModal(true)}
-          className="bg-white hover:bg-[#FAFAFA] border border-black/[0.06] rounded-2xl p-2.5 sm:p-3.5 flex flex-col items-center text-center gap-1.5 transition-colors duration-150 active:scale-[0.98] cursor-pointer"
-        >
-          <span className="size-10 rounded-xl bg-[#063D2B] text-[#B5F44A] flex items-center justify-center">
-            <Share2 className="size-4 text-[#B5F44A]" />
-          </span>
-          <span className="text-[11px] sm:text-xs font-bold text-[#151515] leading-tight">
-            Ganhar 20%
-          </span>
-          <span className="text-[10px] text-[#15803D] font-semibold hidden sm:block">
-            Link e artes
-          </span>
-        </button>
+          <button
+            type="button"
+            onClick={() => onNavigateTab('lookup')}
+            className="min-h-[96px] bg-[#111512] hover:bg-[#151b15] border border-white/[0.09] hover:border-[var(--brand-accent)]/35 rounded-[20px] p-4 flex items-center text-left gap-3 transition-all duration-150 hover:-translate-y-0.5 cursor-pointer"
+          >
+            <span className="size-11 rounded-[13px] bg-[#222822] text-[#c7cec8] flex items-center justify-center shrink-0">
+              <Gift className="size-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <b className="text-xs font-extrabold text-[#f5f7f3] block truncate">Clube local</b>
+              <small className="text-[10px] text-[#798179] block mt-0.5 truncate">
+                Cupons exclusivos
+              </small>
+            </div>
+            <ArrowRight className="size-4 text-[#798179] hidden sm:block shrink-0" aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowStoriesModal(true)}
+            className="min-h-[96px] bg-[#111512] hover:bg-[#151b15] border border-white/[0.09] hover:border-[var(--brand-accent)]/35 rounded-[20px] p-4 flex items-center text-left gap-3 transition-all duration-150 hover:-translate-y-0.5 cursor-pointer"
+          >
+            <span className="size-11 rounded-[13px] bg-[#222822] text-[#D9B85D] flex items-center justify-center shrink-0">
+              <Share2 className="size-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <b className="text-xs font-extrabold text-[#f5f7f3] block truncate">Ganhar 20%</b>
+              <small className="text-[10px] text-[#798179] block mt-0.5 truncate">
+                Link e artes
+              </small>
+            </div>
+            <ArrowRight className="size-4 text-[#798179] hidden sm:block shrink-0" aria-hidden="true" />
+          </button>
+        </div>
       </section>
 
+      {/* MOBILE OVERVIEW SUMMARY (Rules, Partners & Participants — Shown only on Mobile "Início" Tab) */}
+      {mobileFocusMode === 'overview' && (
+        <div className="lg:hidden space-y-4">
+          {/* Resumo das Regras (3 passos Apple Wallet) */}
+          <section className="bg-white rounded-3xl border border-black/[0.06] p-4 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-extrabold text-[#202124]">Como funciona em 3 passos</h2>
+              <button
+                type="button"
+                onClick={() => onNavigateTab('how-to-play')}
+                className="text-xs font-bold text-[#087C45] hover:underline cursor-pointer"
+              >
+                Tutorial 30s →
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2.5 rounded-2xl bg-[#F4F5F7]">
+                <span className="text-xs font-extrabold text-[#073D2B] block">1. Escolha</span>
+                <span className="text-[11px] text-[#5F6368] leading-tight block mt-0.5">
+                  Nºs de 01 a 75
+                </span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-[#F4F5F7]">
+                <span className="text-xs font-extrabold text-[#073D2B] block">2. PIX</span>
+                <span className="text-[11px] text-[#5F6368] leading-tight block mt-0.5">
+                  Libera Raspadinha
+                </span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-[#F4F5F7]">
+                <span className="text-xs font-extrabold text-[#073D2B] block">3. 1ª Bola</span>
+                <span className="text-[11px] text-[#5F6368] leading-tight block mt-0.5">
+                  Ganhou na hora
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Parceiros & Exemplos de Anúncios */}
+          <section className="bg-white rounded-3xl border border-black/[0.06] p-4 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-extrabold text-[#202124]">
+                Parceiros & Anúncios ({adminConfig.cityRegionLabel || 'Maracanaú'})
+              </h2>
+              <button
+                type="button"
+                onClick={() => onNavigateTab('profile')}
+                className="text-xs font-bold text-[#087C45] hover:underline cursor-pointer"
+              >
+                Ver todos →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {PARTNER_AD_SHOWCASE_BANNERS.map((demo) => (
+                <button
+                  key={demo.id}
+                  type="button"
+                  onClick={() => onNavigateTab('profile')}
+                  className="rounded-xl overflow-hidden border border-black/[0.08] bg-[#073D2B] text-left cursor-pointer"
+                >
+                  <img
+                    src={demo.imageUrl}
+                    alt={demo.title}
+                    className="w-full h-20 object-cover block"
+                  />
+                  <div className="px-2 py-1.5 text-white flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-bold truncate">{demo.title}</span>
+                    <span className="text-[9px] text-[#B5F44A] font-bold shrink-0">Ver</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* Participantes & CTA para Grade */}
+          <section className="bg-white rounded-3xl border border-black/[0.06] p-4 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-extrabold text-[#202124]">
+                Participantes ({publicParticipants.length})
+              </h2>
+              <span className="text-[11px] font-bold text-[#087C45] bg-[#E6F4EA] px-2.5 py-0.5 rounded-full">
+                Chance 1 em 75
+              </span>
+            </div>
+            {publicParticipants.length === 0 ? (
+              <p className="text-xs text-[#5F6368]">
+                Grade iniciando do zero ({stats.sold}/75 vendidos). Seja o primeiro a garantir seu
+                número!
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {publicParticipants.slice(0, 3).map((p) => (
+                  <div
+                    key={p.id}
+                    className="p-2.5 rounded-2xl bg-[#F4F5F7] flex items-center justify-between text-xs"
+                  >
+                    <span className="font-bold text-[#202124]">{p.maskedName}</span>
+                    <span className="font-mono font-bold text-[#087C45]">
+                      {p.cartelasCount} {p.cartelasCount === 1 ? 'número' : 'números'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => onNavigateTab('numbers')}
+              className="w-full py-3.5 rounded-2xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-transform duration-150 active:scale-[0.99]"
+            >
+              <span>Abrir Grade 01–75 e Escolher Números</span>
+              <ArrowRight className="size-4" />
+            </button>
+          </section>
+        </div>
+      )}
+
+      {/* COMPACT MOBILE HEADER BAR WHEN ON "NÚMEROS" TAB */}
+      {mobileFocusMode === 'grid' && (
+        <div className="lg:hidden bg-[#111512] border border-white/[0.09] text-[#f5f7f3] rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--brand-accent)] block">
+              Edição #{adminConfig.editionNumber} · 1ª Bola no PIX
+            </span>
+            <strong className="text-base font-extrabold tabular-nums">
+              Prêmio R$ {adminConfig.prizeAmountBRL.toFixed(2).replace('.00', '')} · R${' '}
+              {ticketPriceBRL.toFixed(2).replace('.', ',')}/nº
+            </strong>
+          </div>
+          <span className="px-2.5 py-1 rounded-full bg-[var(--brand-accent)]/15 text-[var(--brand-accent)] text-xs font-bold tabular-nums shrink-0">
+            {stats.available} livres
+          </span>
+        </div>
+      )}
+
       {/* MAIN WORKSPACE: 01–75 GRID (LEFT) + PIX CHECKOUT (RIGHT) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div
+        className={`${
+          mobileFocusMode === 'overview' ? 'hidden lg:grid' : 'grid'
+        } grid-cols-1 lg:grid-cols-12 gap-6 items-start`}
+      >
         <div className="lg:col-span-7 xl:col-span-8 space-y-6">
           {/* 01 to 75 Visual Grid */}
-          <section className="bg-white rounded-3xl border border-black/[0.06] p-4 sm:p-6 space-y-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+          <section className="bg-[#111512] rounded-3xl border border-white/[0.09] p-4 sm:p-6 space-y-4 shadow-[0_12px_40px_rgba(0,0,0,0.3)]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h2 className="text-base sm:text-lg font-extrabold text-[#1D1D1F] flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-extrabold text-[#f5f7f3] flex items-center gap-2">
                   <span>Toque nos Números da Sorte (01 a 75)</span>
                 </h2>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-[#6E6E73] mt-1">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-[#929a94] mt-1">
                   <span className="inline-flex items-center gap-1.5 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" /> Verde = Livre
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#171c18] border border-white/25" /> Livre
                   </span>
                   <span className="inline-flex items-center gap-1.5 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#1D1D1F] ring-2 ring-[#16A34A]" />{' '}
-                    Preto = Selecionado
+                    <span className="w-2.5 h-2.5 rounded-full bg-[var(--brand-accent)]" />{' '}
+                    Selecionado
                   </span>
                   <span className="inline-flex items-center gap-1.5 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#DC2626]" /> Vermelho = Reservado
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" /> Reservado
                   </span>
                   <span className="inline-flex items-center gap-1.5 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#D1D5DB]" /> Cinza = Pago
+                    <span className="w-2.5 h-2.5 rounded-full bg-white/15" /> Pago
                   </span>
                 </div>
               </div>
@@ -769,7 +1088,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                         }
                         onSelectMultipleRandom(3);
                       }}
-                      className="px-2.5 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] text-[#1D1D1F] text-xs font-bold transition-all cursor-pointer active:scale-95"
+                      className="px-2.5 py-2 rounded-xl bg-[#171c18] hover:bg-[#1e261f] border border-white/[0.09] text-[#f5f7f3] text-xs font-bold transition-transform duration-150 cursor-pointer active:scale-95"
                       title="Adicionar 3 números aleatórios"
                     >
                       {ticketPriceBRL === 4 ? '+3 Nºs (R$ 10)' : '+3 Nºs'}
@@ -784,10 +1103,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                         }
                         onSelectMultipleRandom(5);
                       }}
-                      className="px-2.5 py-2 rounded-xl bg-[#1D1D1F] hover:bg-[#333336] text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                      className="px-2.5 py-2 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold flex items-center gap-1 transition-transform duration-150 cursor-pointer active:scale-95"
                       title="Adicionar 5 números aleatórios"
                     >
-                      <Flame className="w-3 h-3 text-[#4ADE80]" />
+                      <Flame className="w-3 h-3" aria-hidden="true" />
                       <span>{ticketPriceBRL === 4 ? '+5 Nºs (R$ 15)' : '+5 Nºs'}</span>
                     </button>
                   </>
@@ -797,7 +1116,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                   <button
                     type="button"
                     onClick={onClearSelection}
-                    className="px-2.5 py-2 rounded-xl text-xs font-semibold text-[#6E6E73] hover:text-[#DC2626] cursor-pointer"
+                    className="px-2.5 py-2 rounded-xl text-xs font-semibold text-[#929a94] hover:text-[#f87171] cursor-pointer"
                   >
                     Limpar
                   </button>
@@ -806,12 +1125,12 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
             </div>
 
             {/* VENDA UNITÁRIA + COMBOS PROMOCIONAIS (1 TOQUE) */}
-            <div className="p-3 rounded-2xl bg-[#F7F8FA] border border-black/[0.06] space-y-2">
+            <div className="p-3 rounded-2xl bg-[#171c18] border border-white/[0.08] space-y-2.5">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="font-bold text-[#151515] flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[#15803D]" /> Combos com Desconto
+                <span className="font-bold text-[#f5f7f3] flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[var(--brand-accent)]" aria-hidden="true" /> Combos com Desconto
                 </span>
-                <span className="text-[#6E6E73] hidden sm:inline">
+                <span className="text-[#929a94] hidden sm:inline">
                   Seleção automática em 1 toque
                 </span>
               </div>
@@ -870,38 +1189,30 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                       }}
                       className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                         isCurrentCount
-                          ? 'bg-[#1D1D1F] text-white border-[#16A34A] ring-2 ring-[#16A34A]'
+                          ? 'bg-[var(--brand-accent)]/15 text-[#f5f7f3] border-[var(--brand-accent)] ring-1 ring-[var(--brand-accent)]'
                           : pkg.popular
-                          ? 'bg-white hover:bg-[#F0FDF4] border-[#16A34A]'
-                          : 'bg-white hover:bg-[#F5F5F7] border-black/[0.08]'
+                          ? 'bg-[#111512] hover:bg-[#1e261f] border-[var(--brand-accent)]/40'
+                          : 'bg-[#111512] hover:bg-[#1e261f] border-white/[0.08]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span
-                          className={`text-xs font-extrabold ${
-                            isCurrentCount ? 'text-white' : 'text-[#1D1D1F]'
-                          }`}
-                        >
+                        <span className="text-xs font-extrabold text-[#f5f7f3]">
                           {pkg.title}
                         </span>
                         <span
                           className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                             isCurrentCount
-                              ? 'bg-[#16A34A] text-white'
+                              ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)]'
                               : pkg.discount > 0
-                              ? 'bg-[#DCFCE7] text-[#15803D]'
-                              : 'bg-[#F5F5F7] text-[#6E6E73]'
+                              ? 'bg-[var(--brand-accent)]/15 text-[var(--brand-accent)]'
+                              : 'bg-white/[0.06] text-[#929a94]'
                           }`}
                         >
                           {pkg.badge}
                         </span>
                       </div>
                       <div className="mt-1 flex items-baseline gap-1.5">
-                        <strong
-                          className={`font-mono text-sm font-extrabold ${
-                            isCurrentCount ? 'text-[#4ADE80]' : 'text-[#15803D]'
-                          }`}
-                        >
+                        <strong className="font-mono text-sm font-extrabold text-[var(--brand-accent)] tabular-nums">
                           R$ {pkg.price.toFixed(2).replace('.', ',')}
                         </strong>
                         {pkg.discount > 0 && (
@@ -930,10 +1241,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
                     statusFilter === 'all'
-                      ? 'bg-[#1D1D1F] text-white'
-                      : 'bg-[#F5F5F7] text-[#6E6E73] hover:text-[#1D1D1F]'
+                      ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)]'
+                      : 'bg-[#171c18] text-[#929a94] hover:text-white border border-white/[0.08]'
                   }`}
                 >
                   Todos (75)
@@ -941,10 +1252,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('available')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
                     statusFilter === 'available'
-                      ? 'bg-[#15803D] text-white'
-                      : 'bg-[#F5F5F7] text-[#6E6E73] hover:text-[#1D1D1F]'
+                      ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)]'
+                      : 'bg-[#171c18] text-[#929a94] hover:text-white border border-white/[0.08]'
                   }`}
                 >
                   Disponíveis ({stats.available})
@@ -952,10 +1263,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('sold')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
                     statusFilter === 'sold'
-                      ? 'bg-[#1D1D1F] text-white'
-                      : 'bg-[#F5F5F7] text-[#6E6E73] hover:text-[#1D1D1F]'
+                      ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)]'
+                      : 'bg-[#171c18] text-[#929a94] hover:text-white border border-white/[0.08]'
                   }`}
                 >
                   Ocupados ({stats.sold + stats.reserved})
@@ -963,7 +1274,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
               </div>
 
               {selectedNumbers.length > 0 && (
-                <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-[#15803D] bg-[#F0FDF4] px-2.5 py-1 rounded-lg border border-[#BBF7D0]">
+                <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-[var(--brand-accent)] bg-[var(--brand-accent)]/10 px-2.5 py-1 rounded-full border border-[var(--brand-accent)]/25">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   {selectedNumbers.length}{' '}
                   {selectedNumbers.length === 1 ? 'selecionado' : 'selecionados'}
@@ -971,61 +1282,115 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
               )}
             </div>
 
-            {/* 75 Numbers Tactile Grid */}
-            <div className="grid grid-cols-5 sm:grid-cols-10 lg:grid-cols-10 xl:grid-cols-15 gap-2 pt-1">
-              {filteredGrid.map((item) => {
-                const isSelected = selectedNumbers.includes(item.number);
-                const isAvailable = item.status === 'available';
-                const isReserved = item.status === 'reserved';
+            {/* Reta Final Banner (Quando restam 15 ou menos números disponíveis) */}
+            {stats.available > 0 && stats.available <= 15 && (
+              <div className="p-3 rounded-2xl bg-[#171c18] border border-[var(--brand-accent)]/35 flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <Flame className="size-4 text-[var(--brand-accent)] shrink-0" aria-hidden="true" />
+                  <span className="text-[#f5f7f3] font-bold">
+                    Reta Final: faltam apenas{' '}
+                    <strong className="text-[var(--brand-accent)] font-mono tabular-nums">
+                      {stats.available}
+                    </strong>{' '}
+                    {stats.available === 1 ? 'número' : 'números'} para fechar a grade!
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectRandom();
+                    scrollToCheckout();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] text-[11px] font-extrabold cursor-pointer shrink-0"
+                >
+                  Pegar 1 dos Últimos →
+                </button>
+              </div>
+            )}
 
-                let cellStyle = '';
-                if (isSelected) {
-                  cellStyle =
-                    'bg-[#0A1713] text-[#B5F44A] ring-2 ring-[#16A34A] ring-offset-1 cursor-pointer';
-                } else if (isAvailable) {
-                  cellStyle =
-                    'bg-[#15803D] hover:bg-[#063D2B] text-white border border-[#166534]/20 cursor-pointer active:scale-95';
-                } else if (isReserved) {
-                  cellStyle =
-                    'bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA] cursor-not-allowed';
-                } else {
-                  cellStyle =
-                    'bg-[#F1F5F9] text-[#94A3B8] border border-black/[0.04] cursor-not-allowed';
-                }
-
-                return (
-                  <button
-                    key={item.number}
-                    type="button"
-                    disabled={!isAvailable}
-                    onClick={() => {
-                      if (pixStep !== 'form') {
-                        onReleaseReservedNumbers(selectedNumbers);
-                        setPixStep('form');
-                        setLastRecord(null);
-                      }
-                      onToggleNumber(item.number);
-                    }}
-                    aria-label={`Número ${item.formatted} ${
-                      isSelected
-                        ? 'selecionado'
-                        : isAvailable
-                        ? 'disponível'
-                        : isReserved
-                        ? 'reservado'
-                        : 'vendido'
-                    }`}
-                    className={`relative h-11 sm:h-11 rounded-xl font-mono text-sm font-bold flex items-center justify-center transition-all select-none ${cellStyle}`}
-                  >
-                    <span>{item.formatted}</span>
-                    {isSelected && (
-                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-[#22C55E] text-[#1D1D1F] flex items-center justify-center shadow-xs">
-                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+            {/* Meu Número da Sorte Fixo (1 toque para salvar ou reservar) */}
+            {(favoriteNumber !== null || selectedNumbers.length === 1) && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-2xl bg-[#171c18] border border-white/[0.08] text-xs">
+                {favoriteNumber !== null ? (
+                  <>
+                    <span className="text-[#929a94] flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-[#D9B85D]" aria-hidden="true" />
+                      <span>
+                        Seu Nº da Sorte:{' '}
+                        <strong className="font-mono text-[#f5f7f3]">
+                          {formatGridNumber(favoriteNumber)}
+                        </strong>
                       </span>
-                    )}
-                  </button>
-                );
-              })}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {grid.find((g) => g.number === favoriteNumber)?.status === 'available' ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedNumbers.includes(favoriteNumber)) {
+                              handleGridCellClick(favoriteNumber);
+                            }
+                            scrollToCheckout();
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] text-[11px] font-extrabold cursor-pointer"
+                        >
+                          Escolher Nº {formatGridNumber(favoriteNumber)}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-[#929a94] font-semibold">
+                          Já ocupado nesta rodada
+                        </span>
+                      )}
+                      {selectedNumbers.length === 1 && selectedNumbers[0] !== favoriteNumber && (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveFavoriteNumber(selectedNumbers[0])}
+                          className="text-[11px] text-[var(--brand-accent)] font-bold hover:underline cursor-pointer"
+                        >
+                          Trocar p/ {formatGridNumber(selectedNumbers[0])}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[#929a94]">
+                      Quer salvar o{' '}
+                      <strong className="font-mono text-[#f5f7f3]">
+                        Nº {formatGridNumber(selectedNumbers[0])}
+                      </strong>{' '}
+                      como seu Número da Sorte fixo?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveFavoriteNumber(selectedNumbers[0])}
+                      className="px-2.5 py-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-[var(--brand-accent)] text-[11px] font-bold cursor-pointer"
+                    >
+                      Salvar Favorito ★
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* 75 Numbers Tactile Grid + Skeleton Fallback */}
+            <div className="grid grid-cols-5 sm:grid-cols-10 lg:grid-cols-10 xl:grid-cols-15 gap-2 pt-1">
+              {grid.length === 0
+                ? Array.from({ length: 15 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      aria-hidden="true"
+                      className="h-11 rounded-xl bg-[#171c18] border border-white/[0.06] animate-pulse"
+                    />
+                  ))
+                : filteredGrid.map((item) => (
+                    <GridCellButton
+                      key={item.number}
+                      item={item}
+                      isSelected={selectedNumbers.includes(item.number)}
+                      onSelect={handleGridCellClick}
+                    />
+                  ))}
             </div>
 
             {/* STRATEGIC SPONSOR & PARTNER RECRUITMENT STRIP WITH 4 DEMO BANNERS */}
@@ -1081,30 +1446,30 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
 
           {/* Privacy-Safe Public Participants Leaderboard */}
           <section
-            className="bg-white rounded-[28px] border border-black/[0.06] p-4 sm:p-6 space-y-4 shadow-2xs"
+            className="bg-[#111512] rounded-[28px] border border-white/[0.09] p-4 sm:p-6 space-y-4 shadow-[0_12px_40px_rgba(0,0,0,0.3)]"
             data-testid="public-participants-section"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <div className="size-8 rounded-2xl bg-[#063D2B] flex items-center justify-center text-[#B5F44A]">
-                  <Users className="size-4" />
+                <div className="size-8 rounded-2xl bg-[var(--brand-accent)]/15 border border-[var(--brand-accent)]/25 flex items-center justify-center text-[var(--brand-accent)]">
+                  <Users className="size-4" aria-hidden="true" />
                 </div>
-                <h3 className="text-sm sm:text-base font-extrabold text-[#151515]">
+                <h3 className="text-sm sm:text-base font-extrabold text-[#f5f7f3]">
                   Quem está participando desta edição ({publicParticipants.length})
                 </h3>
               </div>
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#063D2B] bg-[#B5F44A]/40 px-2.5 py-1 rounded-full">
-                <ShieldCheck className="size-3.5 text-[#063D2B]" /> Números e dados protegidos
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--brand-accent)] bg-[var(--brand-accent)]/10 border border-[var(--brand-accent)]/25 px-2.5 py-1 rounded-full">
+                <ShieldCheck className="size-3.5" aria-hidden="true" /> Números e dados protegidos
               </span>
             </div>
 
             {publicParticipants.length === 0 ? (
-              <div className="p-6 rounded-2xl bg-[#F2F4F7] text-center space-y-3">
+              <div className="p-6 rounded-2xl bg-[#171c18] border border-white/[0.07] text-center space-y-3">
                 <div className="space-y-1">
-                  <p className="text-xs font-extrabold text-[#151515]">
+                  <p className="text-xs font-extrabold text-[#f5f7f3]">
                     Grade iniciando do zero (0/75 vendidos). Seja o #1 da rodada!
                   </p>
-                  <p className="text-[11px] text-[#6E6E73]">
+                  <p className="text-[11px] text-[#929a94]">
                     Assim que sua compra no PIX é confirmada, seu nome mascarado aparece no ranking
                     da edição.
                   </p>
@@ -1115,10 +1480,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                     onSelectRandom();
                     scrollToCheckout();
                   }}
-                  className="px-4 py-2 rounded-full bg-[#063D2B] hover:bg-[#0B5339] text-white text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  className="px-4 py-2 rounded-full bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <span>Escolher o 1º Número da Rodada</span>
-                  <ArrowRight className="size-3.5 text-[#B5F44A]" />
+                  <ArrowRight className="size-3.5" aria-hidden="true" />
                 </button>
               </div>
             ) : (
@@ -1126,34 +1491,34 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                 {publicParticipants.map((p, idx) => (
                   <div
                     key={p.id}
-                    className="p-3 rounded-2xl bg-[#F2F4F7]/85 border border-black/[0.04] flex items-center justify-between gap-2.5"
+                    className="p-3 rounded-2xl bg-[#171c18] border border-white/[0.07] flex items-center justify-between gap-2.5"
                     data-testid="public-participant-card"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="relative size-10 rounded-full bg-[#063D2B] text-[#B5F44A] flex items-center justify-center font-extrabold text-xs shrink-0 shadow-2xs">
+                      <div className="relative size-10 rounded-full bg-[#222822] border border-white/[0.1] text-[var(--brand-accent)] flex items-center justify-center font-extrabold text-xs shrink-0">
                         <span>{p.maskedName.slice(0, 2).toUpperCase()}</span>
                         {idx < 3 && (
-                          <span className="absolute -bottom-1 -right-1 size-4 rounded-full bg-[#B5F44A] text-[#063D2B] text-[9px] font-extrabold flex items-center justify-center ring-2 ring-white tabular-nums">
+                          <span className="absolute -bottom-1 -right-1 size-4 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] text-[9px] font-extrabold flex items-center justify-center ring-2 ring-[#171c18] tabular-nums">
                             {idx + 1}
                           </span>
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-extrabold text-[#151515] truncate">
+                        <p className="text-xs font-extrabold text-[#f5f7f3] truncate">
                           {p.maskedName}
                         </p>
-                        <p className="text-[11px] font-mono text-[#6E6E73] tabular-nums">
+                        <p className="text-[11px] font-mono text-[#929a94] tabular-nums">
                           {p.maskedWhatsapp}
                         </p>
                       </div>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#B5F44A] text-[#063D2B] text-[10px] font-extrabold tabular-nums">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] text-[10px] font-extrabold tabular-nums">
                         <CheckCircle2 className="size-3" /> {p.cartelasCount}{' '}
                         {p.cartelasCount === 1 ? 'cartela' : 'cartelas'}
                       </span>
-                      <p className="text-[10px] text-[#86868B] mt-0.5 flex items-center justify-end gap-0.5">
+                      <p className="text-[10px] text-[#747c76] mt-0.5 flex items-center justify-end gap-0.5">
                         <Lock className="size-2.5" /> Nº oculto
                       </p>
                     </div>
@@ -1163,22 +1528,22 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
             )}
 
             {/* REVERSE MARKETING COMPARISON STRIP (1 in 75 vs Traditional 1 in 1,000,000) */}
-            <div className="p-4 rounded-2xl bg-[#F7F8FA] border border-black/[0.07] flex flex-wrap items-center justify-between gap-3">
+            <div className="p-4 rounded-2xl bg-[#171c18] border border-white/[0.08] flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1 max-w-xl">
-                <span className="text-[11px] font-bold text-[#063D2B] block">
+                <span className="text-[11px] font-bold text-[var(--brand-accent)] block">
                   Por que sua chance aqui é muito maior
                 </span>
-                <p className="text-xs text-[#52525B] leading-relaxed">
+                <p className="text-xs text-[#929a94] leading-relaxed text-pretty">
                   Nos sorteios tradicionais de milhar (como{' '}
-                  <span className="font-semibold text-[#151515]">
+                  <span className="font-semibold text-[#f5f7f3]">
                     Fortcap, Totolec, Canal da Sorte ou Lotece
                   </span>
                   ), você disputa contra <strong>100 mil a 1 milhão de bilhetes</strong>. Aqui são{' '}
-                  <strong className="text-[#063D2B]">apenas 75 números (01 a 75)</strong> e a{' '}
+                  <strong className="text-[#f5f7f3]">apenas 75 números (01 a 75)</strong> e a{' '}
                   <strong>1ª bola sorteada</strong> já leva o PIX na hora.
                 </p>
               </div>
-              <span className="px-3 py-1.5 rounded-xl bg-[#063D2B] text-[#B5F44A] font-mono text-xs font-bold shrink-0">
+              <span className="px-3 py-1.5 rounded-xl bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-mono text-xs font-extrabold shrink-0">
                 1 em 75
               </span>
             </div>
@@ -1188,24 +1553,56 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
         {/* RIGHT COLUMN: PIX CHECKOUT + INSTANT RASPADINHA */}
         <aside
           id="checkout-mvp"
-          className={`lg:col-span-5 xl:col-span-4 bg-white rounded-3xl border transition-all p-5 sm:p-6 space-y-4 lg:sticky lg:top-20 shadow-[0_10px_35px_rgba(0,0,0,0.04)] ${
+          className={`lg:col-span-5 xl:col-span-4 bg-[#111512] text-[#f5f7f3] rounded-3xl border transition-all p-5 sm:p-6 space-y-4 lg:sticky lg:top-24 shadow-[0_20px_50px_rgba(0,0,0,0.4)] ${
             highlightCheckout
-              ? 'border-[#16A34A] ring-4 ring-[#16A34A]/20'
-              : 'border-black/[0.08]'
+              ? 'border-[var(--brand-accent)] ring-4 ring-[var(--brand-accent)]/20'
+              : 'border-white/[0.09]'
           }`}
         >
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
-            <div>
-              <div className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#15803D]">
-                <Zap className="w-3 h-3" /> Checkout Instantâneo · Zero Senha
+          <div className="space-y-3 border-b border-white/[0.09] pb-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-[var(--brand-accent)]">
+                  <Zap className="w-3 h-3" /> Checkout em 3 passos · Sem senha
+                </div>
+                <h2 className="text-lg font-extrabold text-[#f5f7f3]">Confirmar Compra</h2>
               </div>
-              <h2 className="text-lg font-extrabold text-[#1D1D1F]">Finalizar no PIX</h2>
+              <div className="text-right">
+                <span className="text-[10px] font-medium text-[#929a94] block">Cota Unitária</span>
+                <span className="font-mono text-xs font-bold text-[#f5f7f3] tabular-nums">
+                  R$ {ticketPriceBRL.toFixed(2).replace('.', ',')}
+                </span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-[10px] font-medium text-[#6E6E73] block">Cota Unitária</span>
-              <span className="font-mono text-xs font-bold text-[#1D1D1F]">
-                R$ {ticketPriceBRL.toFixed(2).replace('.', ',')}
-              </span>
+
+            {/* Step Progress Bar */}
+            <div className="space-y-1">
+              <div className="w-full h-2 bg-[#171c18] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[var(--brand-accent)] rounded-full transition-all duration-300"
+                  style={{
+                    width:
+                      pixStep === 'confirmed'
+                        ? '100%'
+                        : pixStep === 'awaiting_pix'
+                        ? '70%'
+                        : selectedNumbers.length > 0
+                        ? '40%'
+                        : '18%',
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-semibold text-[#929a94]">
+                <span className={selectedNumbers.length > 0 ? 'text-[var(--brand-accent)] font-bold' : ''}>
+                  1. Números
+                </span>
+                <span className={pixStep !== 'form' ? 'text-[var(--brand-accent)] font-bold' : ''}>
+                  2. Pagamento PIX
+                </span>
+                <span className={pixStep === 'confirmed' ? 'text-[var(--brand-accent)] font-bold' : ''}>
+                  3. Comprovante
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1221,26 +1618,26 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
 
           {pixStep === 'form' && (
             <form onSubmit={handleGeneratePix} className="space-y-4" noValidate>
-              {/* Selected Numbers Summary */}
-              <div className="p-3.5 rounded-2xl bg-[#F5F5F7] border border-black/[0.04] space-y-2.5">
-                <div className="flex items-center justify-between text-xs text-[#6E6E73]">
-                  <span className="font-semibold text-[#1D1D1F]">
+              {/* Selected Numbers Summary (Obsidian Dark Surface) */}
+              <div className="p-3.5 rounded-2xl bg-[#171c18] border border-white/[0.08] space-y-2.5">
+                <div className="flex items-center justify-between text-xs text-[#929a94]">
+                  <span className="font-semibold text-[#f5f7f3]">
                     Suas cartelas ({selectedNumbers.length})
                   </span>
-                  <span className="font-mono font-bold text-[#1D1D1F] tabular-nums">
+                  <span className="font-mono font-bold text-[var(--brand-accent)] tabular-nums">
                     R$ {subtotalBRL.toFixed(2).replace('.', ',')}
                   </span>
                 </div>
 
                 {selectedNumbers.length === 0 ? (
-                  <div className="py-2 flex items-center justify-between gap-2">
-                    <p className="text-xs text-[#6E6E73]">
-                      Toque em um número verde na grade ou use a Surpresinha:
+                  <div className="py-1.5 flex items-center justify-between gap-2">
+                    <p className="text-xs text-[#929a94]">
+                      Toque em um número disponível na grade ou use a Surpresinha:
                     </p>
                     <button
                       type="button"
                       onClick={onSelectRandom}
-                      className="px-2.5 py-1.5 rounded-lg bg-white border border-black/[0.08] text-xs font-bold text-[#15803D] hover:bg-[#F0FDF4] shrink-0 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-[var(--brand-accent)]/15 hover:bg-[var(--brand-accent)]/25 border border-[var(--brand-accent)]/30 text-xs font-extrabold text-[var(--brand-accent)] shrink-0 cursor-pointer transition-colors"
                     >
                       +1 Nº Aleatório
                     </button>
@@ -1253,7 +1650,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                           key={num}
                           type="button"
                           onClick={() => onToggleNumber(num)}
-                          className="px-2.5 py-1 rounded-lg bg-[#1D1D1F] text-white font-mono text-xs font-bold tabular-nums hover:bg-[#DC2626] transition-colors cursor-pointer flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-lg bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-mono text-xs font-extrabold tabular-nums hover:bg-[#ef4444] hover:text-white transition-colors cursor-pointer flex items-center gap-1"
                           title="Remover número"
                         >
                           <span>Nº {formatGridNumber(num)}</span>
@@ -1266,14 +1663,14 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                     {onSurroundNeighbors &&
                       availableNeighbors.length > 0 &&
                       selectedNumbers.length <= 4 && (
-                        <div className="p-2.5 rounded-xl bg-gradient-to-r from-[#ECFDF5] to-[#F0FDF4] border border-[#86EFAC] flex items-center justify-between gap-2">
-                          <div className="text-[11px] leading-snug text-[#166534]">
-                            <strong className="font-extrabold text-[#15803D] flex items-center gap-1">
-                              <Sparkles className="size-3 shrink-0" /> Cercar Vizinhos da Sorte?
+                        <div className="p-2.5 rounded-xl bg-[#111512] border border-[var(--brand-accent)]/30 flex items-center justify-between gap-2">
+                          <div className="text-[11px] leading-snug text-[#929a94]">
+                            <strong className="font-extrabold text-[var(--brand-accent)] flex items-center gap-1">
+                              <Sparkles className="size-3 shrink-0" aria-hidden="true" /> Cercar Vizinhos da Sorte?
                             </strong>
                             <span>
                               Garanta também o{' '}
-                              <strong className="font-mono">
+                              <strong className="font-mono text-[#f5f7f3]">
                                 Nº {availableNeighbors.map(formatGridNumber).join(' e ')}
                               </strong>{' '}
                               e ative desconto de Combo!
@@ -1282,7 +1679,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                           <button
                             type="button"
                             onClick={onSurroundNeighbors}
-                            className="px-2.5 py-1.5 rounded-lg bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-extrabold shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                            className="px-2.5 py-1.5 rounded-lg bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-[11px] font-extrabold shrink-0 cursor-pointer shadow-2xs active:scale-95"
                           >
                             + Cercar ({availableNeighbors.length})
                           </button>
@@ -1300,7 +1697,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
 
               {/* Returning Customer Auto-Fill Badge */}
               {customerProfile?.name && customerProfile?.whatsapp && (
-                <div className="px-3 py-2 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-center justify-between text-[11px] text-[#15803D]">
+                <div className="px-3 py-2 rounded-xl bg-[var(--brand-accent)]/10 border border-[var(--brand-accent)]/25 flex items-center justify-between text-[11px] text-[var(--brand-accent)]">
                   <span className="font-semibold flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                     <span>Dados preenchidos p/ compra em 1 toque</span>
@@ -1313,7 +1710,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                 <div>
                   <label
                     htmlFor="checkout-name"
-                    className="block text-xs font-bold text-[#1D1D1F] mb-1"
+                    className="block text-xs font-bold text-[#f5f7f3] mb-1"
                   >
                     Seu Nome Completo
                   </label>
@@ -1326,10 +1723,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                       if (errors.name) setErrors({ ...errors, name: undefined });
                     }}
                     placeholder="Ex: Maria Silva"
-                    className="w-full px-3.5 py-2.5 text-sm bg-[#F5F5F7] focus:bg-white border border-black/[0.08] focus:border-[#16A34A] rounded-xl focus:outline-none transition-colors font-medium"
+                    className="w-full px-3.5 py-2.5 text-sm text-[#f5f7f3] placeholder:text-[#5e6660] bg-[#171c18] focus:bg-[#1c231d] border border-white/[0.1] focus:border-[var(--brand-accent)] rounded-xl focus:outline-none transition-colors font-medium"
                   />
                   {errors.name && (
-                    <p className="text-xs text-[#DC2626] mt-1 font-medium" role="alert">
+                    <p className="text-xs text-[#f87171] mt-1 font-medium" role="alert">
                       {errors.name}
                     </p>
                   )}
@@ -1338,7 +1735,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                 <div>
                   <label
                     htmlFor="checkout-whatsapp"
-                    className="block text-xs font-bold text-[#1D1D1F] mb-1"
+                    className="block text-xs font-bold text-[#f5f7f3] mb-1"
                   >
                     Seu WhatsApp (com DDD)
                   </label>
@@ -1351,10 +1748,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                       if (errors.whatsapp) setErrors({ ...errors, whatsapp: undefined });
                     }}
                     placeholder="(11) 98765-4321"
-                    className="w-full px-3.5 py-2.5 text-sm font-mono bg-[#F5F5F7] focus:bg-white border border-black/[0.08] focus:border-[#16A34A] rounded-xl focus:outline-none transition-colors font-semibold"
+                    className="w-full px-3.5 py-2.5 text-sm font-mono text-[#f5f7f3] placeholder:text-[#5e6660] bg-[#171c18] focus:bg-[#1c231d] border border-white/[0.1] focus:border-[var(--brand-accent)] rounded-xl focus:outline-none transition-colors font-semibold"
                   />
                   {errors.whatsapp && (
-                    <p className="text-xs text-[#DC2626] mt-1 font-medium" role="alert">
+                    <p className="text-xs text-[#f87171] mt-1 font-medium" role="alert">
                       {errors.whatsapp}
                     </p>
                   )}
@@ -1363,7 +1760,7 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                 <div>
                   <label
                     htmlFor="checkout-email"
-                    className="block text-xs font-medium text-[#6E6E73] mb-1"
+                    className="block text-xs font-medium text-[#929a94] mb-1"
                   >
                     E-mail para receber o comprovante (opcional)
                   </label>
@@ -1373,61 +1770,72 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="seuemail@exemplo.com"
-                    className="w-full px-3.5 py-2 text-xs bg-[#F5F5F7] focus:bg-white border border-black/[0.06] focus:border-[#1D1D1F] rounded-xl focus:outline-none transition-colors"
+                    className="w-full px-3.5 py-2 text-xs text-[#f5f7f3] placeholder:text-[#5e6660] bg-[#171c18] focus:bg-[#1c231d] border border-white/[0.1] focus:border-[var(--brand-accent)] rounded-xl focus:outline-none transition-colors"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-black/[0.06] space-y-1.5 text-xs">
+              {/* Spendvest-style Order Review Hairline Summary */}
+              <div className="rounded-2xl bg-[#171c18] border border-white/[0.08] divide-y divide-white/[0.07] px-3.5 text-xs">
                 {comboPricing.comboDiscountBRL > 0 && (
-                  <div className="flex items-center justify-between text-[#15803D] font-bold bg-[#ECFDF5] px-2.5 py-1 rounded-lg border border-[#A7F3D0]">
-                    <span className="inline-flex items-center gap-1">
-                      <Flame className="size-3.5 shrink-0" /> {comboPricing.comboLabel}
+                  <div className="py-2.5 flex items-center justify-between text-[var(--brand-accent)] font-bold">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Flame className="size-3.5 shrink-0" aria-hidden="true" />
+                      <span>{comboPricing.comboLabel}</span>
                     </span>
-                    <span className="font-mono">
+                    <span className="font-mono tabular-nums">
                       - R$ {comboPricing.comboDiscountBRL.toFixed(2).replace('.', ',')}
                     </span>
                   </div>
                 )}
                 {appliedDiscount > 0 && (
-                  <div className="flex items-center justify-between text-[#15803D] font-bold bg-[#F0FDF4] px-2.5 py-1 rounded-lg">
-                    <span>Desconto da Raspadinha aplicado</span>
-                    <span className="font-mono">
+                  <div className="py-2.5 flex items-center justify-between text-[var(--brand-accent)] font-bold">
+                    <span>Desconto da Raspadinha</span>
+                    <span className="font-mono tabular-nums">
                       - R$ {appliedDiscount.toFixed(2).replace('.', ',')}
                     </span>
                   </div>
                 )}
-                <div className="flex items-center justify-between text-base font-extrabold text-[#1D1D1F]">
-                  <span>Total no PIX</span>
-                  <span className="font-mono tabular-nums text-[#15803D]">
+                <div className="py-2.5 flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-[#f5f7f3]">Total no PIX</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-mono font-extrabold text-sm tabular-nums">
                     R$ {finalAmountBRL.toFixed(2).replace('.', ',')}
                   </span>
                 </div>
                 {adminConfig.scratchEnabled && (
-                  <div className="flex items-center justify-between text-[#15803D] pt-0.5">
+                  <div className="py-2.5 flex items-center justify-between text-[#929a94]">
                     <span>Bônus liberado na hora</span>
-                    <span className="font-bold inline-flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> +1 Raspadinha Premiada
+                    <span className="font-bold text-[#D9B85D] inline-flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" aria-hidden="true" /> +1 Raspadinha Premiada
                     </span>
                   </div>
                 )}
               </div>
 
+              {/* Purchase Protection Row */}
+              <div className="p-3 rounded-xl bg-[#171c18] border border-white/[0.07] flex items-start gap-2.5 text-[11px] text-[#929a94]">
+                <ShieldCheck className="size-4 text-[var(--brand-accent)] shrink-0 mt-0.5" aria-hidden="true" />
+                <p className="leading-snug">
+                  <strong className="text-[#f5f7f3] block">Compra Protegida Chance Premiada</strong>
+                  Trava única anti-duplicidade: nenhum outro participante pode escolher o seu número.
+                </p>
+              </div>
+
               <button
                 type="submit"
                 disabled={selectedNumbers.length === 0}
-                className={`w-full py-2.5 pl-5 pr-2.5 rounded-2xl text-sm font-extrabold transition-all duration-150 flex items-center justify-between gap-2 ${
+                className={`w-full py-3.5 pl-5 pr-3.5 rounded-[14px] text-sm font-extrabold transition-all duration-150 flex items-center justify-between gap-2 ${
                   selectedNumbers.length === 0
-                    ? 'bg-[#E8E8ED] text-[#86868B] cursor-not-allowed'
-                    : 'bg-[#063D2B] hover:bg-[#0B5339] text-white shadow-md cursor-pointer active:scale-[0.99]'
+                    ? 'bg-white/[0.06] text-[#5e6660] cursor-not-allowed'
+                    : 'bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] shadow-[0_12px_35px_rgba(200,255,55,0.18)] active:scale-[0.98] cursor-pointer'
                 }`}
               >
                 <span>Pagar R$ {finalAmountBRL.toFixed(2).replace('.', ',')} no PIX</span>
                 <span
-                  className={`size-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  className={`size-8 rounded-xl flex items-center justify-center shrink-0 ${
                     selectedNumbers.length === 0
-                      ? 'bg-black/5 text-[#86868B]'
-                      : 'bg-[#B5F44A] text-[#063D2B]'
+                      ? 'bg-white/[0.05] text-[#5e6660]'
+                      : 'bg-[#0a0d0a]/15 text-[#0a0d0a]'
                   }`}
                 >
                   <ArrowRight className="size-4" />
@@ -1581,139 +1989,185 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
             </div>
           )}
 
-          {pixStep === 'confirmed' && lastRecord && (
+          {pixStep === 'confirmed' && syncedLastRecord && (
             <motion.div
               initial={{ opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
               className="space-y-4"
               data-testid="pix-confirmed-step"
             >
-              {/* PREMIUM OFFICIAL RECEIPT TICKET CARD */}
-              <div
-                className={`p-4 rounded-2xl border-2 space-y-3 shadow-xs ${
-                  lastRecord.status === 'Pagamento em Conferência'
-                    ? 'bg-gradient-to-b from-[#FEF3C7]/45 to-white border-[#F59E0B]/60'
-                    : 'bg-gradient-to-b from-[#F0FDF4] to-white border-[#86EFAC]'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div
-                    className={`flex items-center gap-1.5 font-extrabold text-sm ${
-                      lastRecord.status === 'Pagamento em Conferência'
-                        ? 'text-[#B45309]'
-                        : 'text-[#15803D]'
-                    }`}
-                  >
-                    {lastRecord.status === 'Pagamento em Conferência' ? (
-                      <Clock className="w-4 h-4 shrink-0" />
+              {/* FINTECH REVIEW RECEIPT CARD (Brand Obsidian Hero + Hairline Rows + Security Seal) */}
+              <div className="rounded-3xl bg-[#171c18] border border-white/[0.1] overflow-hidden shadow-[0_14px_40px_rgba(0,0,0,0.35)]">
+                {/* Branded Receipt Hero */}
+                <div
+                  className="p-5 text-center space-y-2.5 border-b border-white/[0.08]"
+                  style={{
+                    background:
+                      syncedLastRecord.status === 'Pagamento em Conferência'
+                        ? 'linear-gradient(135deg, #241d10 0%, #14120c 100%)'
+                        : 'linear-gradient(135deg, #172816 0%, #0d150e 100%)',
+                  }}
+                >
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <div className="size-8 rounded-lg bg-[var(--brand-accent)] flex items-center justify-center -rotate-6 shadow-xs shrink-0">
+                      <img
+                        src={chancePremiadaLogo}
+                        alt="Chance Premiada"
+                        className="h-5 w-auto object-contain rotate-6"
+                      />
+                    </div>
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-[#f5f7f3]">
+                      Chance Premiada
+                    </span>
+                  </div>
+
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/35 border border-white/15 text-[10px] font-extrabold uppercase tracking-wider text-[var(--brand-accent)]">
+                    {syncedLastRecord.status === 'Pagamento em Conferência' ? (
+                      <Clock className="w-3 h-3 text-[#D9B85D]" aria-hidden="true" />
                     ) : (
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
                     )}
                     <span>
-                      {lastRecord.status === 'Pagamento em Conferência'
+                      {syncedLastRecord.status === 'Pagamento em Conferência'
                         ? 'Reservado · Conferência do PIX'
-                        : 'Comprovante Oficial Emitido'}
+                        : 'Comprovante Oficial · Chance Premiada'}
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono font-bold text-[#15803D] bg-white px-2 py-0.5 rounded-md border border-[#BBF7D0]">
-                    {lastRecord.pixTxId}
-                  </span>
+
+                  <p className="text-3xl font-extrabold font-mono text-[#f5f7f3] tabular-nums tracking-tight">
+                    R$ {syncedLastRecord.amountPaid.toFixed(2).replace('.', ',')}
+                  </p>
+
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.08] border border-white/[0.1] text-xs">
+                    <span className="size-5 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold text-[10px] flex items-center justify-center">
+                      {syncedLastRecord.customerName.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="font-bold text-[#f5f7f3] truncate max-w-[180px]">
+                      {syncedLastRecord.customerName}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-white border border-black/[0.08] flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] uppercase tracking-wider text-[#6E6E73] font-bold block">
-                      {lastRecord.status === 'Pagamento em Conferência'
-                        ? 'Números Segurados p/ Você'
-                        : 'Seus Números Garantidos'}
-                    </span>
-                    <strong className="font-mono text-base font-extrabold text-[#15803D]">
-                      Nº {lastRecord.numbers.join(', ')}
+                {/* Hairline Details Table */}
+                <div className="px-4 py-1 divide-y divide-white/[0.07] text-xs">
+                  <div className="py-2.5 flex items-center justify-between gap-2">
+                    <span className="text-[#929a94]">Edição</span>
+                    <strong className="text-[#f5f7f3] font-bold">{syncedLastRecord.editionNumber}</strong>
+                  </div>
+                  <div className="py-2.5 flex items-center justify-between gap-2">
+                    <span className="text-[#929a94]">Seus Números</span>
+                    <strong className="font-mono font-extrabold text-[var(--brand-accent)] tabular-nums">
+                      Nº {syncedLastRecord.numbers.join(', ')}
                     </strong>
                   </div>
-                  <div className="w-9 h-9 rounded-xl bg-[#DCFCE7] text-[#15803D] flex items-center justify-center">
-                    <Ticket className="w-5 h-5" />
+                  <div className="py-2.5 flex items-center justify-between gap-2">
+                    <span className="text-[#929a94]">Pagamento</span>
+                    <span className="text-[#f5f7f3] font-semibold">PIX Instantâneo</span>
                   </div>
+                  <div className="py-2.5 flex items-center justify-between gap-2">
+                    <span className="text-[#929a94]">ID Transação</span>
+                    <span className="font-mono text-[11px] text-[#f5f7f3] tabular-nums">
+                      {syncedLastRecord.pixTxId}
+                    </span>
+                  </div>
+                  {syncedLastRecord.customerEmail && (
+                    <div className="py-2.5 flex items-center justify-between gap-2">
+                      <span className="text-[#929a94]">Cópia E-mail</span>
+                      <span className="text-[var(--brand-accent)] text-[11px] truncate max-w-[180px]">
+                        {syncedLastRecord.customerEmail}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                <div className="ticket-divider pt-3 flex items-center justify-between text-[11px] text-[#6E6E73]">
-                  <span>
-                    Titular: <strong className="text-[#1D1D1F]">{lastRecord.customerName}</strong> ·{' '}
-                    <span className="font-mono">{lastRecord.customerWhatsappFormatted}</span>
-                  </span>
+                {/* Security Seal & Actions */}
+                <div className="p-4 pt-2 space-y-2.5">
+                  <div className="p-2.5 rounded-xl bg-[#111512] border border-white/[0.07] flex items-center gap-2 text-[11px] text-[#929a94]">
+                    <ShieldCheck className="size-4 text-[var(--brand-accent)] shrink-0" aria-hidden="true" />
+                    <span>
+                      Participação protegida pela trava única anti-duplicidade{' '}
+                      <strong className="text-[#f5f7f3]">Chance Premiada</strong>.
+                    </span>
+                  </div>
+
+                  {syncedLastRecord.status === 'Pagamento em Conferência' ? (
+                    <a
+                      href={`https://wa.me/${(adminConfig.whatsappSupportNumber || '5585985252317').replace(
+                        /\D/g,
+                        ''
+                      )}?text=${encodeURIComponent(
+                        `Olá! Fiz o PIX de *R$ ${syncedLastRecord.amountPaid
+                          .toFixed(2)
+                          .replace('.', ',')}* na *${syncedLastRecord.editionNumber}* da Chance Premiada!\n\n👤 *Nome:* ${syncedLastRecord.customerName}\n🔢 *Números:* Nº ${syncedLastRecord.numbers.join(
+                          ', '
+                        )}\n🧾 *Código:* ${syncedLastRecord.pixTxId}\n\nSegue meu comprovante para liberação:`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full py-3 px-4 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Enviar Comprovante no WhatsApp</span>
+                    </a>
+                  ) : (
+                    <a
+                      href={`https://wa.me/55${syncedLastRecord.customerWhatsapp}?text=${encodeURIComponent(
+                        `✅ *COMPROVANTE OFICIAL — CHANCE PREMIADA*\n\n🎟 *${syncedLastRecord.editionNumber}*\n🔢 *Meus Números:* Nº ${syncedLastRecord.numbers.join(
+                          ', '
+                        )}\n💰 *Prêmio da 1ª Bola:* R$ ${syncedLastRecord.prizeAmountBRL
+                          .toFixed(2)
+                          .replace('.', ',')} no PIX\n🧾 *ID Transação:* ${syncedLastRecord.pixTxId}`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full py-3 px-4 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Salvar Comprovante no Meu WhatsApp</span>
+                    </a>
+                  )}
                 </div>
+              </div>
 
-                {lastRecord.customerEmail && (
-                  <p className="text-[11px] text-[#15803D] flex items-center gap-1">
-                    <Mail className="w-3 h-3" /> Cópia enviada para {lastRecord.customerEmail}
-                  </p>
-                )}
-
-                {lastRecord.status === 'Pagamento em Conferência' ? (
-                  <a
-                    href={`https://wa.me/${(adminConfig.whatsappSupportNumber || '5585999999999').replace(
-                      /\D/g,
-                      ''
-                    )}?text=${encodeURIComponent(
-                      `Olá! Fiz o PIX de *R$ ${lastRecord.amountPaid
-                        .toFixed(2)
-                        .replace('.', ',')}* na *${lastRecord.editionNumber}* da Chance Premiada!\n\n👤 *Nome:* ${lastRecord.customerName}\n🔢 *Números:* Nº ${lastRecord.numbers.join(
-                        ', '
-                      )}\n🧾 *Código:* ${lastRecord.pixTxId}\n\nSegue meu comprovante para liberação:`
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2.5 px-3 rounded-xl bg-[#063D2B] hover:bg-[#0B5339] text-[#B5F44A] text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>Enviar Comprovante no WhatsApp do Admin</span>
-                  </a>
-                ) : (
-                  <a
-                    href={`https://wa.me/55${lastRecord.customerWhatsapp}?text=${encodeURIComponent(
-                      `✅ *COMPROVANTE OFICIAL — CHANCE PREMIADA*\n\n🎟 *${lastRecord.editionNumber}*\n🔢 *Meus Números:* Nº ${lastRecord.numbers.join(
-                        ', '
-                      )}\n💰 *Prêmio da 1ª Bola:* R$ ${lastRecord.prizeAmountBRL
-                        .toFixed(2)
-                        .replace('.', ',')} no PIX\n🧾 *ID Transação:* ${lastRecord.pixTxId}`
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2 px-3 rounded-xl bg-white hover:bg-[#F0FDF4] border border-[#BBF7D0] text-[#15803D] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>Salvar Comprovante no Meu WhatsApp</span>
-                  </a>
-                )}
+              {/* Ethical Remarketing Block inside Receipt */}
+              <div className="p-3.5 rounded-2xl bg-[#171c18] border border-[var(--brand-accent)]/25 space-y-1.5 text-xs">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--brand-accent)] flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" aria-hidden="true" /> Próximo Passo Inteligente
+                </span>
+                <p className="text-[11px] text-[#929a94] leading-relaxed">
+                  {syncedLastRecord.status === 'Pagamento em Conferência'
+                    ? 'Envie o comprovante acima para liberar seus números e sua Raspadinha Digital na hora.'
+                    : 'Raspe sua Raspadinha abaixo para conferir seu bônus instantâneo ou compartilhe com amigos para fechar os 75 números mais rápido.'}
+                </p>
               </div>
 
               {/* FUNCTIONAL TAMPER-PROOF SCRATCH CARD (Locked until Admin approves Direct PIX) */}
-              {adminConfig.scratchEnabled && lastRecord.status === 'Pagamento em Conferência' ? (
-                <div className="p-4 rounded-2xl bg-[#F7F8FA] border border-black/[0.08] text-center space-y-1.5">
-                  <div className="size-9 rounded-xl bg-[#FEF3C7] text-[#B45309] flex items-center justify-center mx-auto">
-                    <Lock className="size-4" />
+              {adminConfig.scratchEnabled && syncedLastRecord.status === 'Pagamento em Conferência' ? (
+                <div className="p-4 rounded-2xl bg-[#171c18] border border-white/[0.08] text-center space-y-1.5">
+                  <div className="size-9 rounded-xl bg-[#D9B85D]/15 text-[#D9B85D] flex items-center justify-center mx-auto">
+                    <Lock className="size-4" aria-hidden="true" />
                   </div>
-                  <p className="text-xs font-extrabold text-[#151515]">
+                  <p className="text-xs font-extrabold text-[#f5f7f3]">
                     Raspadinha Digital bloqueada até a conferência do PIX
                   </p>
-                  <p className="text-[11px] text-[#6E6E73]">
+                  <p className="text-[11px] text-[#929a94]">
                     Assim que o Administrador confirmar seu PIX no extrato bancário, seus números
                     ficam validados e sua Raspadinha é liberada na aba{' '}
-                    <strong>Meus Números</strong>.
+                    <strong className="text-[#f5f7f3]">Participações</strong>.
                   </p>
                 </div>
               ) : (
                 adminConfig.scratchEnabled && (
                   <ScratchCardWidget
-                    scratch={lastRecord.scratchCard}
+                    scratch={syncedLastRecord.scratchCard}
                     onRevealComplete={() => {
-                      onScratchRevealed(lastRecord.id);
-                      if (lastRecord.scratchCard.tier === 'bonus_coins') {
-                      setDiscountBRL(lastRecord.scratchCard.valueBRL);
+                      onScratchRevealed(syncedLastRecord.id);
+                      if (syncedLastRecord.scratchCard.tier === 'bonus_coins') {
+                      setDiscountBRL(syncedLastRecord.scratchCard.valueBRL);
                     }
                   }}
                   onUseDiscountNow={() => {
-                    setDiscountBRL(lastRecord.scratchCard.valueBRL);
+                    setDiscountBRL(syncedLastRecord.scratchCard.valueBRL);
                     setPixStep('form');
                     setLastRecord(null);
                     if (selectedNumbers.length === 0) {
@@ -1733,11 +2187,11 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
                     {adminConfig.cityRegionLabel || 'Maracanaú'}!
                   </span>
                   <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded text-[#15803D] border border-[#BBF7D0]">
-                    +{lastRecord.coinsEarned} Coins
+                    +{syncedLastRecord.coinsEarned} Coins
                   </span>
                 </div>
                 <p className="text-[11px] text-[#166534] leading-snug">
-                  Seus R$ {lastRecord.amountPaid.toFixed(2).replace('.', ',')} já valem até{' '}
+                  Seus R$ {syncedLastRecord.amountPaid.toFixed(2).replace('.', ',')} já valem até{' '}
                   <strong>R$ 15,00 de desconto</strong> hoje nas lojas parceiras (Pizza, Açaí,
                   Barbearia e Lava-Jato):
                 </p>
@@ -1986,26 +2440,27 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* MOBILE STICKY BOTTOM CHECKOUT CALLOUT WHEN NUMBERS ARE SELECTED */}
+      {/* MOBILE LIQUID GLASS STICKY CHECKOUT CALLOUT WHEN NUMBERS ARE SELECTED */}
       <AnimatePresence>
         {selectedNumbers.length > 0 && pixStep === 'form' && (
           <motion.div
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            className="fixed bottom-16 left-3 right-3 z-30 lg:hidden bg-[#1D1D1F]/95 backdrop-blur-md text-white p-3.5 rounded-2xl flex items-center justify-between shadow-2xl border border-white/15"
+            transition={{ duration: 0.18 }}
+            className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-3 right-3 z-30 lg:hidden liquid-glass-dark text-white p-3.5 rounded-[22px] flex items-center justify-between gap-3"
           >
-            <div className="min-w-0 pr-2">
+            <div className="min-w-0 pr-1">
               <p className="text-[11px] font-medium text-white/80 truncate">
                 {selectedNumbers.length} {selectedNumbers.length === 1 ? 'cartela' : 'cartelas'} (Nº{' '}
                 {selectedNumbers.map(formatGridNumber).join(', ')})
               </p>
               <div className="flex items-center gap-2">
-                <p className="text-base font-extrabold font-mono tabular-nums text-[#4ADE80]">
+                <p className="text-base font-extrabold font-mono tabular-nums text-[var(--brand-accent)]">
                   R$ {finalAmountBRL.toFixed(2).replace('.', ',')}
                 </p>
                 {appliedDiscount > 0 && (
-                  <span className="text-[10px] font-bold bg-[#16A34A] text-white px-1.5 py-0.5 rounded">
+                  <span className="text-[10px] font-bold bg-white/15 text-white px-1.5 py-0.5 rounded">
                     Desconto Ativo
                   </span>
                 )}
@@ -2014,10 +2469,10 @@ export const HomeAndGridView: React.FC<HomeAndGridViewProps> = ({
             <button
               type="button"
               onClick={scrollToCheckout}
-              className="px-4 py-2.5 bg-gradient-to-r from-[#16A34A] to-[#22C55E] text-white text-xs font-extrabold rounded-xl cursor-pointer shrink-0 flex items-center gap-1.5 shadow-md active:scale-95"
+              className="px-4 py-2.5 bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold rounded-xl cursor-pointer shrink-0 flex items-center gap-1.5 shadow-sm active:scale-95 transition-transform duration-150"
             >
               <span>Finalizar PIX</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
           </motion.div>
         )}

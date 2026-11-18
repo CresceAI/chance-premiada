@@ -22,7 +22,11 @@ import {
   DEFAULT_AFFILIATE_SELLERS,
   getAvailableNeighbors,
   releaseExpiredReservations,
+  generatePixCopyPasteCode,
+  DEFAULT_ADMIN_CONFIG,
+  calculateSafeFinalAmount,
 } from './engine.ts';
+import { DAILY_THEME_PRESETS, resolveActiveTheme } from './themeTokens.ts';
 
 test('zeroed grid starts with all 75 numbers available in green and 0 sold/reserved', () => {
   const grid = createZeroedGrid();
@@ -309,4 +313,48 @@ test('affiliate URL tracker and automatic commission + hot-foot bonus receipt ge
   assert.equal(lucasSettlement.totalPayoutBRL, 11.6);
   assert.ok(lucasSettlement.whatsappReceiptText.includes('COMPROVANTE DE COMISSÃO'));
   assert.ok(lucasSettlement.whatsappReceiptText.includes('R$ 11,60'));
+});
+
+test('checkout validation rejects invalid inputs and generates valid EMV PIX copy-paste payload', () => {
+  const bad = validateCheckoutInput({ name: 'A', whatsapp: '123', selectedNumbers: [] });
+  assert.equal(bad.valid, false);
+  assert.ok(bad.errors.name);
+  assert.ok(bad.errors.whatsapp);
+  assert.ok(bad.errors.numbers);
+
+  const ok = validateCheckoutInput({
+    name: 'Maria Silva',
+    whatsapp: '(85) 98765-4321',
+    selectedNumbers: [7, 25],
+  });
+  assert.equal(ok.valid, true);
+
+  const pix = generatePixCopyPasteCode([7, 25], 8, 'ED24', 'chancepremiada@pix.com.br', 'CHANCE PREMIADA');
+  assert.ok(pix.startsWith('000201'));
+  assert.ok(pix.toLowerCase().includes('br.gov.bcb.pix'));
+  assert.ok(pix.includes('8.00'));
+});
+
+test('daily theme rotation resolves deterministically across days and honors fixed presets', () => {
+  assert.equal(DAILY_THEME_PRESETS.length, 4);
+
+  const day1 = resolveActiveTheme('auto_daily', new Date('2026-11-18T12:00:00Z'));
+  const day2 = resolveActiveTheme('auto_daily', new Date('2026-11-19T12:00:00Z'));
+  assert.notEqual(day1.id, day2.id);
+
+  const fixed = resolveActiveTheme('gold_obsidian', new Date('2026-11-18T12:00:00Z'));
+  assert.equal(fixed.id, 'gold_obsidian');
+  assert.equal(fixed.accent, '#D9B85D');
+  assert.equal(DEFAULT_ADMIN_CONFIG.whatsappSupportNumber, '5585985252317');
+});
+
+test('anti-loss discount guard caps unit discount at 25% and blocks stacking on combos', () => {
+  const unitSafe = calculateSafeFinalAmount(1, 4.0, 2.0);
+  assert.equal(unitSafe.appliedDiscountBRL, 1.0); // 25% cap of R$ 4.00
+  assert.equal(unitSafe.finalAmountBRL, 3.0);
+
+  const comboSafe = calculateSafeFinalAmount(5, 4.0, 2.0);
+  assert.equal(comboSafe.comboPricing.comboTotalBRL, 15.0);
+  assert.equal(comboSafe.appliedDiscountBRL, 0); // never stacks on combo
+  assert.equal(comboSafe.finalAmountBRL, 15.0);
 });

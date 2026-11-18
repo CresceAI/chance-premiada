@@ -92,23 +92,23 @@ export const HowToPlayOnboardingView: React.FC<HowToPlayOnboardingViewProps> = (
   };
 
   return (
-    <div className="space-y-6 pb-20 lg:pb-8">
-      {/* Top Progress Header — Duolingo-inspired Micro-Journey */}
-      <section className="bg-white rounded-3xl border border-black/[0.06] p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+    <div className="space-y-6 pb-24 lg:pb-8">
+      {/* Top Progress Header — Duolingo-inspired Micro-Journey (Obsidian & Lime) */}
+      <section className="bg-[#111512] rounded-3xl border border-white/[0.09] p-5 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.3)]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-[#6E6E73]">
-              <span className="font-bold text-[#15803D] bg-[#F0FDF4] px-2.5 py-0.5 rounded-md border border-[#BBF7D0] inline-flex items-center gap-1">
-                <Zap className="w-3 h-3" /> Guia Interativo em 30 Segundos
+            <div className="flex items-center gap-2 text-xs text-[#929a94]">
+              <span className="font-bold text-[var(--brand-accent)] bg-[var(--brand-accent)]/10 px-2.5 py-0.5 rounded-md border border-[var(--brand-accent)]/25 inline-flex items-center gap-1">
+                <Zap className="w-3 h-3" aria-hidden="true" /> Guia Interativo em 30 Segundos
               </span>
               <span aria-hidden="true">·</span>
-              <span className="font-semibold text-[#1D1D1F]">
+              <span className="font-semibold text-[#f5f7f3] tabular-nums">
                 Passo {currentStep} de {totalSteps}
               </span>
               <span aria-hidden="true">·</span>
               <span className="font-mono tabular-nums">{progressPercent}% concluído</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-[#1D1D1F] tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#f5f7f3] tracking-tight text-balance">
               Aprenda jogando: como ganhar R$ {prizeFormatted} no PIX com 1 número
             </h1>
           </div>
@@ -116,17 +116,17 @@ export const HowToPlayOnboardingView: React.FC<HowToPlayOnboardingViewProps> = (
           <button
             type="button"
             onClick={() => onStartPlayingNow()}
-            className="self-start sm:self-center px-3.5 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] text-[#1D1D1F] text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="self-start sm:self-center px-3.5 py-2 rounded-xl bg-[#171c18] hover:bg-[#1e261f] text-[#f5f7f3] border border-white/[0.09] text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             Pular para a Grade (01–75)
           </button>
         </div>
 
-        {/* Smooth Progress Bar + Step Selector Buttons */}
+        {/* Duolingo-Inspired Thick Progress Bar + Tactile Step Tabs */}
         <div className="mt-4 space-y-3">
-          <div className="w-full h-2.5 bg-[#F5F5F7] rounded-full overflow-hidden p-0.5">
+          <div className="w-full h-3.5 bg-[#171c18] rounded-full overflow-hidden p-0.5">
             <div
-              className="h-full bg-gradient-to-r from-[#16A34A] to-[#22C55E] transition-all duration-300 rounded-full"
+              className="h-full bg-[var(--brand-accent)] transition-all duration-300 rounded-full"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -151,16 +151,16 @@ export const HowToPlayOnboardingView: React.FC<HowToPlayOnboardingViewProps> = (
                   role="tab"
                   aria-selected={isCurrent}
                   onClick={() => setCurrentStep(item.step)}
-                  className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                  className={`min-h-[44px] px-3 py-2 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 transition-transform duration-150 cursor-pointer whitespace-nowrap ${
                     isCurrent
-                      ? 'bg-[#1D1D1F] text-white shadow-xs'
+                      ? 'bg-[var(--brand-primary)] text-white shadow-[0_3px_0_#04261B] active:translate-y-[2px] active:shadow-none'
                       : isCompleted
-                      ? 'bg-[#F0FDF4] text-[#15803D] border border-[#BBF7D0]'
-                      : 'bg-[#F5F5F7] text-[#6E6E73] hover:text-[#1D1D1F]'
+                      ? 'bg-[#E6F4EA] text-[#087C45] border border-[#86EFAC]'
+                      : 'bg-[#F4F5F7] text-[#5F6368] hover:text-[#202124] border border-black/[0.06]'
                   }`}
                 >
                   <span className="truncate">{item.label}</span>
-                  {isCompleted && <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A] shrink-0" />}
+                  {isCompleted && <CheckCircle2 className="w-3.5 h-3.5 text-[#087C45] shrink-0" />}
                 </button>
               );
             })}

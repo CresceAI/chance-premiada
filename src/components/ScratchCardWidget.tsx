@@ -118,47 +118,47 @@ export const ScratchCardWidget: React.FC<ScratchCardWidgetProps> = ({
       className={`p-4 rounded-2xl border transition-all space-y-3 ${
         revealed
           ? isFreeCartela
-            ? 'bg-gradient-to-br from-[#ECFDF5] via-[#F0FDF4] to-[#FEF9C3]/40 border-[#86EFAC] shadow-sm'
-            : 'bg-gradient-to-br from-[#F0FDF4] to-white border-[#BBF7D0] shadow-xs'
-          : 'bg-[#F5F5F7] border-black/[0.08]'
+            ? 'bg-[#171c18] border-[var(--brand-accent)]/40 shadow-sm'
+            : 'bg-[#171c18] border-[var(--brand-accent)]/30 shadow-xs'
+          : 'bg-[#171c18] border-white/[0.09]'
       }`}
     >
       <div className="flex items-center justify-between text-xs">
-        <span className="font-bold text-[#1D1D1F] flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-[#16A34A]" />
+        <span className="font-bold text-[#f5f7f3] flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-[var(--brand-accent)]" aria-hidden="true" />
           <span>Raspadinha Bônus Instantânea</span>
         </span>
-        <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/80 border border-black/[0.06] text-[#6E6E73]">
+        <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#111512] border border-white/[0.08] text-[#929a94]">
           {scratch.signatureHash}
         </span>
       </div>
 
       {/* Prize Layer Underneath + Foil Canvas on Top */}
-      <div className="relative min-h-[124px] rounded-xl overflow-hidden bg-white border border-black/[0.06] flex flex-col items-center justify-center p-4 text-center select-none shadow-inner">
+      <div className="relative min-h-[124px] rounded-xl overflow-hidden bg-[#111512] border border-white/[0.08] flex flex-col items-center justify-center p-4 text-center select-none shadow-inner">
         <motion.div
           initial={false}
           animate={revealed ? { scale: [0.94, 1.03, 1], opacity: 1 } : { scale: 0.98, opacity: 0.85 }}
           transition={{ duration: 0.35 }}
           className="space-y-1.5 max-w-sm"
         >
-          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D] text-[10px] font-mono uppercase tracking-wider font-bold">
-            <Gift className="w-3 h-3" />
+          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[var(--brand-accent)]/15 border border-[var(--brand-accent)]/25 text-[var(--brand-accent)] text-[10px] font-mono uppercase tracking-wider font-bold">
+            <Gift className="w-3 h-3" aria-hidden="true" />
             <span>{revealed ? 'Prêmio Revelado ✓' : 'Prêmio Oculto'}</span>
           </div>
           <p
-            className="text-sm sm:text-base font-extrabold text-[#1D1D1F] leading-snug"
+            className="text-sm sm:text-base font-extrabold text-[#f5f7f3] leading-snug"
             data-testid="scratch-prize-title"
           >
             {scratch.title}
           </p>
-          <p className="text-xs text-[#6E6E73] leading-relaxed">{scratch.subtitle}</p>
+          <p className="text-xs text-[#929a94] leading-relaxed">{scratch.subtitle}</p>
 
           {revealed && !isFreeCartela && onUseDiscountNow && (
             <div className="pt-1.5">
               <button
                 type="button"
                 onClick={onUseDiscountNow}
-                className="px-3.5 py-1.5 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                className="px-4 py-2 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold transition-transform duration-150 cursor-pointer shadow-xs active:scale-95 tabular-nums"
               >
                 Usar Desconto de R$ {scratch.valueBRL.toFixed(2).replace('.', ',')} Agora →
               </button>
@@ -191,8 +191,8 @@ export const ScratchCardWidget: React.FC<ScratchCardWidgetProps> = ({
       </div>
 
       <div className="flex items-center justify-between text-[11px] text-[#6E6E73]">
-        <span className="flex items-center gap-1">
-          <ShieldCheck className="w-3.5 h-3.5 text-[#15803D] shrink-0" />
+        <span className="flex items-center gap-1 tabular-nums">
+          <ShieldCheck className="w-3.5 h-3.5 text-[var(--brand-primary)] shrink-0" aria-hidden="true" />
           <span>
             {!revealed && scratchProgress > 0
               ? `Raspando... (${scratchProgress}%)`
@@ -203,14 +203,14 @@ export const ScratchCardWidget: React.FC<ScratchCardWidgetProps> = ({
           <button
             type="button"
             onClick={handleInstantReveal}
-            className="font-bold text-[#15803D] hover:text-[#166534] inline-flex items-center gap-1 underline cursor-pointer"
+            className="font-bold text-[var(--brand-primary)] hover:opacity-80 inline-flex items-center gap-1 underline cursor-pointer"
           >
-            <Hand className="w-3 h-3" />
+            <Hand className="w-3 h-3" aria-hidden="true" />
             <span>Raspar com 1 toque</span>
           </button>
         ) : (
           <span className="font-bold text-[#15803D] flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Creditado (+30 Coins)
+            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Creditado (+30 Coins)
           </span>
         )}
       </div>

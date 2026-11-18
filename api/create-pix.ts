@@ -46,6 +46,23 @@ export default async function handler(req: any, res: any) {
     editionNumber,
   } = req.body || {};
 
+  // Server-side payload integrity validation (prevents negative/zero/tampered PIX charges)
+  const parsedAmount = Number(amountBRL);
+  const validNumbers =
+    Array.isArray(numbers) &&
+    numbers.length > 0 &&
+    numbers.length <= 75 &&
+    numbers.every((n: unknown) => Number.isInteger(Number(n)) && Number(n) >= 1 && Number(n) <= 75);
+  const cleanName = String(customerName || '').trim();
+  const cleanWhatsappDigits = String(customerWhatsapp || '').replace(/\D/g, '');
+
+  if (!validNumbers || !Number.isFinite(parsedAmount) || parsedAmount < 0.5) {
+    return res.status(400).json({ error: 'Dados ou valor da cobrança PIX inválidos.' });
+  }
+  if (cleanName.length < 2 || cleanWhatsappDigits.length < 10) {
+    return res.status(400).json({ error: 'Nome completo e WhatsApp com DDD são obrigatórios.' });
+  }
+
   // If ASAAS_API_KEY is not set yet, automatically fall back to Option 2 (Direct PIX Key / EMV)
   if (!asaasApiKey || asaasApiKey.includes('SEU_TOKEN')) {
     return res.status(200).json({

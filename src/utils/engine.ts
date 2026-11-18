@@ -1,3 +1,8 @@
+import { calculateComboPricing, calculateSafeFinalAmount } from './pricing.ts';
+
+export { calculateComboPricing, calculateSafeFinalAmount };
+export type { ComboPricingResult } from './pricing.ts';
+
 export type NumberStatus = 'available' | 'reserved' | 'sold';
 
 export interface GridNumber {
@@ -304,6 +309,7 @@ export interface AdminConfig {
   prizeAmountBRL: number;
   ticketPriceBRL: number;
   customBannerUrl?: string;
+  themePreference?: 'auto_daily' | 'emerald_volt' | 'gold_obsidian' | 'mint_apple' | 'ocean_fintech';
   scratchEnabled: boolean;
   scratchFreeNumberLimitPerEdition: number;
   secretScratchPositions: [number, number, number, number];
@@ -632,7 +638,7 @@ export const DEFAULT_ADMIN_CONFIG: AdminConfig = {
   telegramChannelUrl: 'https://t.me/chancepremiada_oficial',
   telegramBotToken: '',
   telegramChatId: '@chancepremiada_oficial',
-  whatsappSupportNumber: '5585999999999',
+  whatsappSupportNumber: '5585985252317',
 };
 
 export function formatGridNumber(n: number): string {
@@ -1073,193 +1079,7 @@ export function releaseExpiredReservations(
   return { updatedGrid, expiredNumbers };
 }
 
-/**
- * Smart Combo Pricing: supports single unit sale (1 Nº) + promotional combos (3, 5, 10 Nºs),
- * closing the 75-number grid up to 4x faster while increasing average order value (AOV).
- */
-export function calculateComboPricing(
-  count: number,
-  ticketPriceBRL: number
-): {
-  regularTotalBRL: number;
-  comboDiscountBRL: number;
-  comboTotalBRL: number;
-  comboLabel: string | null;
-} {
-  const regularTotalBRL = count * ticketPriceBRL;
-  if (count < 3) {
-    return {
-      regularTotalBRL,
-      comboDiscountBRL: 0,
-      comboTotalBRL: regularTotalBRL,
-      comboLabel: null,
-    };
-  }
-
-  // Exact banner combos for R$ 1.00 ticket (Prêmio R$ 50 no PIX - banner-pix-50.jpg):
-  // 1 por R$ 1,00 | 3 por R$ 2,50 | 5 por R$ 4,50 (Economize R$ 0,50) | 10 por R$ 8,00 (Economize R$ 2,00)
-  if (Math.abs(ticketPriceBRL - 1) < 0.01) {
-    let remaining = count;
-    let comboTotalBRL = 0;
-
-    if (remaining >= 10) {
-      const blocksOf10 = Math.floor(remaining / 10);
-      comboTotalBRL += blocksOf10 * 8.0;
-      remaining = remaining % 10;
-    }
-    if (remaining >= 5) {
-      const blocksOf5 = Math.floor(remaining / 5);
-      comboTotalBRL += blocksOf5 * 4.5;
-      remaining = remaining % 5;
-    }
-    if (remaining >= 3) {
-      comboTotalBRL += 2.5 + (remaining - 3) * 1.0;
-      remaining = 0;
-    }
-    comboTotalBRL += remaining * 1.0;
-
-    const label =
-      count >= 10
-        ? 'Super Combo 10 Nºs (R$ 8,00) Ativo!'
-        : count >= 5
-        ? 'Combo 5 Nºs (R$ 4,50) Ativo!'
-        : 'Combo 3 Nºs (R$ 2,50) Ativo!';
-
-    return {
-      regularTotalBRL,
-      comboDiscountBRL: Math.max(0, regularTotalBRL - comboTotalBRL),
-      comboTotalBRL,
-      comboLabel: label,
-    };
-  }
-
-  // Exact banner combos for R$ 1.50 ticket (Prêmio R$ 75 no PIX - banner-pix-75.jpg):
-  // 1 por R$ 1,50 | 3 por R$ 4,00 | 5 por R$ 7,00 (Economize R$ 0,50) | 10 por R$ 13,00 (Economize R$ 2,00)
-  if (Math.abs(ticketPriceBRL - 1.5) < 0.01) {
-    let remaining = count;
-    let comboTotalBRL = 0;
-
-    if (remaining >= 10) {
-      const blocksOf10 = Math.floor(remaining / 10);
-      comboTotalBRL += blocksOf10 * 13.0;
-      remaining = remaining % 10;
-    }
-    if (remaining >= 5) {
-      const blocksOf5 = Math.floor(remaining / 5);
-      comboTotalBRL += blocksOf5 * 7.0;
-      remaining = remaining % 5;
-    }
-    if (remaining >= 3) {
-      comboTotalBRL += 4.0 + (remaining - 3) * 1.5;
-      remaining = 0;
-    }
-    comboTotalBRL += remaining * 1.5;
-
-    const label =
-      count >= 10
-        ? 'Super Combo 10 Nºs (R$ 13,00) Ativo!'
-        : count >= 5
-        ? 'Combo 5 Nºs (R$ 7,00) Ativo!'
-        : 'Combo 3 Nºs (R$ 4,00) Ativo!';
-
-    return {
-      regularTotalBRL,
-      comboDiscountBRL: Math.max(0, regularTotalBRL - comboTotalBRL),
-      comboTotalBRL,
-      comboLabel: label,
-    };
-  }
-
-  // Exact round-number combos for the standard R$ 4.00 ticket:
-  // 1 por R$ 4 | 3 por R$ 10 | 5 por R$ 15 | 10 por R$ 28
-  if (Math.abs(ticketPriceBRL - 4) < 0.01) {
-    let remaining = count;
-    let comboTotalBRL = 0;
-
-    if (remaining >= 10) {
-      const blocksOf10 = Math.floor(remaining / 10);
-      comboTotalBRL += blocksOf10 * 28;
-      remaining = remaining % 10;
-    }
-    if (remaining >= 5) {
-      const blocksOf5 = Math.floor(remaining / 5);
-      comboTotalBRL += blocksOf5 * 15;
-      remaining = remaining % 5;
-    }
-    if (remaining >= 3) {
-      comboTotalBRL += 10 + (remaining - 3) * 4;
-      remaining = 0;
-    }
-    comboTotalBRL += remaining * 4;
-
-    const label =
-      count >= 10
-        ? 'Super Combo 10 Nºs (R$ 28) Ativo!'
-        : count >= 5
-        ? 'Combo 5 Nºs (R$ 15) Ativo!'
-        : 'Combo 3 Nºs (R$ 10) Ativo!';
-
-    return {
-      regularTotalBRL,
-      comboDiscountBRL: Math.max(0, regularTotalBRL - comboTotalBRL),
-      comboTotalBRL,
-      comboLabel: label,
-    };
-  }
-
-  // Exact banner combos for R$ 10.00 ticket (Prêmio R$ 600 no PIX - banner-pix-600.jpg):
-  // 1 por R$ 10,00 | 3 por R$ 27,00 | 5 por R$ 45,00 (Economize R$ 5,00) | 10 por R$ 85,00 (Economize R$ 15,00)
-  if (Math.abs(ticketPriceBRL - 10) < 0.01) {
-    let remaining = count;
-    let comboTotalBRL = 0;
-
-    if (remaining >= 10) {
-      const blocksOf10 = Math.floor(remaining / 10);
-      comboTotalBRL += blocksOf10 * 85.0;
-      remaining = remaining % 10;
-    }
-    if (remaining >= 5) {
-      const blocksOf5 = Math.floor(remaining / 5);
-      comboTotalBRL += blocksOf5 * 45.0;
-      remaining = remaining % 5;
-    }
-    if (remaining >= 3) {
-      comboTotalBRL += 27.0 + (remaining - 3) * 10.0;
-      remaining = 0;
-    }
-    comboTotalBRL += remaining * 10.0;
-
-    const label =
-      count >= 10
-        ? 'Super Combo 10 Nºs (R$ 85,00) Ativo!'
-        : count >= 5
-        ? 'Combo 5 Nºs (R$ 45,00) Ativo!'
-        : 'Combo 3 Nºs (R$ 27,00) Ativo!';
-
-    return {
-      regularTotalBRL,
-      comboDiscountBRL: Math.max(0, regularTotalBRL - comboTotalBRL),
-      comboTotalBRL,
-      comboLabel: label,
-    };
-  }
-
-  // Proportional combo discount for other ticket prices (15% off for 3+, 20% off for 5+, 25% off for 10+)
-  const pctOff = count >= 10 ? 0.25 : count >= 5 ? 0.2 : 0.15;
-  const comboDiscountBRL = Math.round(regularTotalBRL * pctOff * 2) / 2;
-  const comboTotalBRL = Math.max(ticketPriceBRL, regularTotalBRL - comboDiscountBRL);
-  return {
-    regularTotalBRL,
-    comboDiscountBRL,
-    comboTotalBRL,
-    comboLabel:
-      count >= 10
-        ? 'Super Combo 10+ Nºs Ativo!'
-        : count >= 5
-        ? 'Combo 5+ Nºs Ativo!'
-        : 'Combo 3+ Nºs Ativo!',
-  };
-}
+// Combo pricing & anti-loss discount calculation extracted to ./pricing.ts (SRP)
 
 export interface CustomerLoyaltyProfile {
   name: string;
@@ -1267,6 +1087,7 @@ export interface CustomerLoyaltyProfile {
   email: string;
   coinsBalance: number;
   remarketingDiscountBRL: number;
+  favoriteNumber?: number;
 }
 
 /**
