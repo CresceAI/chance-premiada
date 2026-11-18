@@ -10,6 +10,9 @@ import {
   HelpCircle,
   Coins,
   Gift,
+  Home,
+  Grid3X3,
+  User,
 } from 'lucide-react';
 import {
   AdminConfig,
@@ -40,6 +43,7 @@ import {
   resolveFirstBallWinner,
   tryReserveNumbersAtomically,
 } from './utils/engine';
+import { applyThemeCssVariables, resolveActiveTheme } from './utils/themeTokens';
 import { databaseService } from './services/database';
 import { HomeAndGridView } from './components/HomeAndGridView';
 
@@ -64,7 +68,7 @@ const AdminPanelView = React.lazy(() =>
   }))
 );
 
-type ActiveTab = 'home' | 'how-to-play' | 'lookup' | 'results' | 'admin';
+type ActiveTab = 'home' | 'numbers' | 'how-to-play' | 'lookup' | 'profile' | 'results' | 'admin';
 
 const SAMPLE_BUYER_NAMES = [
   'Maria Aparecida',
@@ -234,6 +238,10 @@ export default function App() {
   }, []);
 
   // Smart visibility-aware sync from Supabase (pauses when phone screen is off / tab hidden -> saves 85% requests)
+  useEffect(() => {
+    applyThemeCssVariables(resolveActiveTheme(adminConfig.themePreference || 'auto_daily'));
+  }, [adminConfig.themePreference]);
+
   useEffect(() => {
     if (!databaseService.isSupabaseConfigured()) return;
     let active = true;
@@ -840,9 +848,15 @@ export default function App() {
       pixTxId: drawResult.winnerPixTxId,
     };
 
+    const extractEditionDigits = (label: string) => label.replace(/\D/g, '').replace(/^0+/, '') || label;
+
     setWinners((prev) => [
       newWinner,
-      ...prev.filter((w) => w.editionNumber !== targetEditionLabel),
+      ...prev.filter(
+        (w) =>
+          w.editionNumber !== targetEditionLabel &&
+          extractEditionDigits(w.editionNumber) !== String(editionToDraw)
+      ),
     ]);
 
     // Update customer participations for this specific edition with the official 1st-ball result
@@ -1045,93 +1059,94 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-dvh flex flex-col bg-[#F2F4F7] text-[#151515] pb-24 md:pb-0">
-      {/* Top Bar — Native App Feel + Segmented Desktop Pills + Loyalty Pill + Discreet Admin Lock */}
-      <header className="sticky top-0 z-40 h-16 bg-white/90 backdrop-blur-xl border-b border-black/[0.06] shadow-2xs">
-        <div className="max-w-[1160px] mx-auto h-full px-3.5 sm:px-6 flex items-center justify-between gap-2 sm:gap-3">
-          {/* Zone 1: Official Brand Logo + Personalized Welcome Subtitle */}
+    <div
+      className="min-h-dvh flex flex-col text-[var(--brand-ink)] pb-24 md:pb-0 overflow-x-hidden"
+      style={{
+        background:
+          'radial-gradient(circle at 82% 10%, rgba(104, 238, 43, 0.08), transparent 24rem), var(--brand-canvas)',
+      }}
+    >
+      {/* Top Bar — Exact Chance Premiada Premium Redesign Obsidian & Lime Header */}
+      <header className="sticky top-0 z-40 h-16 sm:h-[76px] liquid-glass border-b border-white/[0.09]">
+        <div className="max-w-[1180px] mx-auto h-full px-3.5 sm:px-6 flex items-center justify-between gap-2 sm:gap-5">
+          {/* Zone 1: Tilted Lime Brand Mark + Official Chance Premiada Title */}
           <a
             href="#sorteio"
             onClick={(e) => {
               e.preventDefault();
               setActiveTab('home');
             }}
-            className="flex items-center gap-2.5 shrink-0 cursor-pointer group"
+            className="flex items-center gap-2.5 min-w-0 cursor-pointer group"
           >
-            <div className="h-11 px-2 rounded-2xl bg-gradient-to-br from-[#063D2B] to-[#0A1713] flex items-center justify-center border border-[#D5AC58]/40 shadow-xs group-hover:scale-105 transition-transform duration-150">
+            <div className="size-9 sm:size-[37px] rounded-xl bg-[var(--brand-accent)] text-[#0b0e0c] grid place-items-center -rotate-6 shadow-[0_0_25px_rgba(200,255,55,0.22)] shrink-0 group-hover:scale-105 transition-transform duration-150">
               <img
                 src={chancePremiadaLogo}
                 alt="Logo Oficial Chance Premiada"
-                className="h-9 w-auto object-contain drop-shadow-xs"
+                className="h-6 w-auto object-contain rotate-6 drop-shadow-2xs"
               />
             </div>
-            <div className="flex flex-col">
-              <span className="font-extrabold text-sm tracking-tight text-[#0A1713] leading-none flex items-center gap-1.5">
-                <span>Chance Premiada</span>
-                <span className="hidden sm:inline-block px-1.5 py-0.5 rounded-md bg-[#B5F44A]/40 text-[#063D2B] text-[9px] font-extrabold uppercase">
-                  {adminConfig.cityRegionLabel || 'Maracanaú'}
-                </span>
+            <div className="flex flex-col min-w-0 leading-none">
+              <span className="font-extrabold text-[13px] sm:text-sm uppercase tracking-tight text-[#f5f7f3] truncate">
+                Chance
               </span>
-              <span className="text-[11px] font-semibold text-[#15803D] mt-0.5">
-                {customerProfile.name
-                  ? `Olá, ${customerProfile.name.split(' ')[0]}! · 1ª Bola`
-                  : 'Grade 01–75 · 1ª Bola no PIX'}
+              <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-[var(--brand-accent)] mt-1 truncate">
+                Premiada
               </span>
             </div>
           </a>
 
-          {/* Zone 2: Desktop Segmented Pill Navigation */}
+          {/* Zone 2: Desktop Rounded Pill Navigation */}
           <nav
             aria-label="Navegação do Cliente"
-            className="hidden md:flex items-center gap-1 p-1 rounded-2xl bg-[#F2F4F7] border border-black/[0.05] shrink-0"
+            className="hidden md:flex items-center gap-0.5 p-1 rounded-full bg-white/[0.025] border border-white/[0.09] shrink-0"
           >
             <a
-              href="#sorteio"
+              href="#inicio"
               onClick={(e) => {
                 e.preventDefault();
                 setActiveTab('home');
               }}
-              className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all duration-150 ${
+              className={`px-4 py-2 rounded-full text-xs whitespace-nowrap transition-all duration-150 ${
                 activeTab === 'home'
-                  ? 'bg-[#063D2B] text-white font-extrabold shadow-2xs'
-                  : 'font-semibold text-[#6E6E73] hover:text-[#151515]'
+                  ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+                  : 'font-bold text-[#89918b] hover:text-white'
               }`}
             >
-              Sorteio do Dia
+              Início
             </a>
             <a
-              href="#como-jogar"
+              href="#numeros"
               onClick={(e) => {
                 e.preventDefault();
-                setActiveTab('how-to-play');
+                setActiveTab('numbers');
               }}
-              className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all duration-150 ${
-                activeTab === 'how-to-play'
-                  ? 'bg-[#063D2B] text-white font-extrabold shadow-2xs'
-                  : 'font-semibold text-[#6E6E73] hover:text-[#151515]'
+              className={`px-4 py-2 rounded-full text-xs whitespace-nowrap transition-all duration-150 ${
+                activeTab === 'numbers'
+                  ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+                  : 'font-bold text-[#89918b] hover:text-white'
               }`}
             >
-              Como Jogar
+              Números
             </a>
             <a
-              href="#consultar-whatsapp"
+              href="#participacoes"
               onClick={(e) => {
                 e.preventDefault();
                 setActiveTab('lookup');
               }}
-              className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all duration-150 flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-full text-xs whitespace-nowrap transition-all duration-150 flex items-center gap-1.5 ${
                 activeTab === 'lookup'
-                  ? 'bg-[#063D2B] text-white font-extrabold shadow-2xs'
-                  : 'font-semibold text-[#6E6E73] hover:text-[#151515]'
+                  ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+                  : 'font-bold text-[#89918b] hover:text-white'
               }`}
             >
-              <span>Meus Números</span>
+              <span>Participações</span>
               {participations.length > 0 && (
                 <span
-                  className={`px-1.5 py-0.2 rounded-md text-[10px] font-extrabold tabular-nums ${
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold tabular-nums ${
                     activeTab === 'lookup'
-                      ? 'bg-[#B5F44A] text-[#063D2B]'
-                      : 'bg-[#DCFCE7] text-[#15803D]'
+                      ? 'bg-[#0a0c0a]/15 text-[#0a0c0a]'
+                      : 'bg-[var(--brand-accent)]/15 text-[var(--brand-accent)]'
                   }`}
                 >
                   {participations.length}
@@ -1139,23 +1154,42 @@ export default function App() {
               )}
             </a>
             <a
+              href="#perfil"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveTab('profile');
+              }}
+              className={`px-4 py-2 rounded-full text-xs whitespace-nowrap transition-all duration-150 ${
+                activeTab === 'profile'
+                  ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+                  : 'font-bold text-[#89918b] hover:text-white'
+              }`}
+            >
+              Clube
+            </a>
+            <a
               href="#resultados"
               onClick={(e) => {
                 e.preventDefault();
                 setActiveTab('results');
               }}
-              className={`px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all duration-150 ${
+              className={`px-4 py-2 rounded-full text-xs whitespace-nowrap transition-all duration-150 ${
                 activeTab === 'results'
-                  ? 'bg-[#063D2B] text-white font-extrabold shadow-2xs'
-                  : 'font-semibold text-[#6E6E73] hover:text-[#151515]'
+                  ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+                  : 'font-bold text-[#89918b] hover:text-white'
               }`}
             >
               Resultados
             </a>
           </nav>
 
-          {/* Zone 3: Customer Loyalty / Lookup Action + Discreet Admin Lock */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Zone 3: Location Dot + Loyalty Coins + Lookup + Discreet Admin */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            <span className="hidden lg:inline-flex items-center gap-1.5 text-[11px] font-medium text-[#9ba29d] mr-1">
+              <span className="size-[7px] rounded-full bg-[var(--brand-accent)] shadow-[0_0_0_5px_rgba(200,255,55,0.12)]" />
+              <span>{adminConfig.cityRegionLabel || 'Maracanaú, CE'}</span>
+            </span>
+
             {customerProfile.remarketingDiscountBRL > 0 && (
               <button
                 type="button"
@@ -1165,7 +1199,7 @@ export default function App() {
                     handleQuickPickRandom();
                   }
                 }}
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC] text-[11px] font-extrabold cursor-pointer"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-[var(--brand-accent)]/15 text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 text-[11px] font-extrabold cursor-pointer"
                 title="Cupom da Raspadinha ativo para sua próxima compra"
               >
                 <Gift className="w-3.5 h-3.5" />
@@ -1179,31 +1213,33 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setActiveTab('lookup')}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#FEF3C7]/80 border border-[#FDE68A] text-[#B45309] text-xs font-extrabold cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-[var(--brand-accent)] text-[11px] sm:text-xs font-extrabold cursor-pointer"
                 title="Seu Saldo de Chance Coins"
               >
-                <Coins className="w-3.5 h-3.5 text-[#D97706]" />
-                <span className="font-mono">{customerProfile.coinsBalance}</span>
+                <Coins className="w-3.5 h-3.5" />
+                <span className="font-mono tabular-nums">{customerProfile.coinsBalance}</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={() => setActiveTab('lookup')}
-              className="px-3 py-1.5 rounded-xl border border-black/[0.08] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] font-bold text-xs transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-2xs"
+              aria-label="Ver Meu Número"
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-full border border-white/[0.1] bg-white/[0.05] hover:bg-white/[0.1] text-[#f5f7f3] font-bold text-xs transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
             >
-              <Search className="w-3.5 h-3.5 text-[#16A34A]" />
-              <span>Ver Meu Nº</span>
+              <Search className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+              <span className="hidden sm:inline">Ver Meu Nº</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('admin')}
+              aria-label="Área Restrita do Administrador"
               title="Área Restrita do Administrador"
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 border transition-colors cursor-pointer ${
                 activeTab === 'admin'
-                  ? 'bg-[#1D1D1F] text-white'
-                  : 'text-[#6E6E73] hover:text-[#1D1D1F] hover:bg-[#F5F5F7]'
+                  ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] border-transparent'
+                  : 'border-white/[0.09] bg-white/[0.03] text-[#929a94] hover:text-white hover:bg-white/[0.08]'
               }`}
             >
               <Lock className="w-3.5 h-3.5" />
@@ -1223,7 +1259,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-[1140px] w-full mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
-        {activeTab === 'home' && (
+        {(activeTab === 'home' || activeTab === 'numbers') && (
           <HomeAndGridView
             grid={grid}
             participations={participations}
@@ -1260,6 +1296,7 @@ export default function App() {
             onCompletePurchase={handleCompletePurchase}
             onScratchRevealed={handleScratchRevealed}
             onNavigateTab={setActiveTab}
+            mobileFocusMode={activeTab === 'numbers' ? 'grid' : 'overview'}
           />
         )}
 
@@ -1290,7 +1327,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'lookup' && (
+          {(activeTab === 'lookup' || activeTab === 'profile') && (
             <ParticipationsAndLoyaltyView
               participations={participations}
               lastUsedWhatsapp={customerProfile.whatsapp}
@@ -1299,6 +1336,9 @@ export default function App() {
               partnerCoupons={adminConfig.partnerCoupons}
               cityRegionLabel={adminConfig.cityRegionLabel || 'Maracanaú - CE'}
               supportWhatsapp={adminConfig.whatsappSupportNumber || '5585999999999'}
+              viewMode={activeTab === 'profile' ? 'profile' : 'participations'}
+              onNavigateResults={() => setActiveTab('results')}
+              onNavigateHowToPlay={() => setActiveTab('how-to-play')}
               onRedeemPartnerCoupon={(couponId) => {
                 setAdminConfig((prev) => ({
                   ...prev,
@@ -1321,7 +1361,7 @@ export default function App() {
               }}
               onScratchRevealed={handleScratchRevealed}
               onNavigateToGrid={() => {
-                setActiveTab('home');
+                setActiveTab('numbers');
                 if (selectedNumbers.length === 0) {
                   handleQuickPickRandom();
                 }
@@ -1377,144 +1417,210 @@ export default function App() {
         </Suspense>
       </main>
 
-      {/* Mobile Floating Pill Bottom Navigation Dock */}
+      {/* Mobile iOS 26 Floating Liquid Glass 4-Tab Bottom Dock (Dark Obsidian + Lime Active Pill) */}
       <nav
         aria-label="Navegação Mobile"
-        className="md:hidden fixed bottom-2.5 inset-x-3 z-40 bg-white/95 backdrop-blur-xl border border-black/[0.08] rounded-3xl p-1.5 flex items-center justify-between gap-1 shadow-[0_12px_32px_rgba(6,61,43,0.14)] pb-safe-bottom"
+        className="md:hidden fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] inset-x-3 z-40 rounded-[26px] liquid-glass px-1.5 py-1.5 grid grid-cols-4 gap-1"
       >
         <button
           type="button"
           onClick={() => setActiveTab('home')}
-          aria-label="Sorteio"
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-2xl cursor-pointer transition-all duration-150 ${
+          aria-label="Início"
+          aria-current={activeTab === 'home' ? 'page' : undefined}
+          className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-[20px] cursor-pointer transition-colors duration-150 ${
             activeTab === 'home'
-              ? 'bg-[#063D2B] text-white font-extrabold shadow-xs flex-1'
-              : 'text-[#6E6E73] hover:text-[#151515] font-semibold'
+              ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+              : 'text-[#929a94] hover:text-white font-medium'
           }`}
         >
-          <Ticket
-            className={`size-4 shrink-0 ${
-              activeTab === 'home' ? 'text-[#B5F44A]' : 'text-[#6E6E73]'
-            }`}
-          />
-          <span className="text-[11px] whitespace-nowrap">Sorteio</span>
+          <Home className="size-5" aria-hidden="true" />
+          <span className="text-[11px] leading-tight">Início</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveTab('how-to-play')}
-          aria-label="Como Jogar"
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl cursor-pointer transition-all duration-150 ${
-            activeTab === 'how-to-play'
-              ? 'bg-[#063D2B] text-white font-extrabold shadow-xs flex-1'
-              : 'text-[#6E6E73] hover:text-[#151515] font-semibold'
+          onClick={() => setActiveTab('numbers')}
+          aria-label="Números"
+          aria-current={activeTab === 'numbers' ? 'page' : undefined}
+          className={`relative flex flex-col items-center justify-center gap-0.5 py-2 rounded-[20px] cursor-pointer transition-colors duration-150 ${
+            activeTab === 'numbers'
+              ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+              : 'text-[#929a94] hover:text-white font-medium'
           }`}
         >
-          <HelpCircle
-            className={`size-4 shrink-0 ${
-              activeTab === 'how-to-play' ? 'text-[#B5F44A]' : 'text-[#6E6E73]'
-            }`}
-          />
-          <span className="text-[11px] whitespace-nowrap">Como Jogar</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('lookup')}
-          aria-label="Meus Números"
-          className={`relative flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl cursor-pointer transition-all duration-150 ${
-            activeTab === 'lookup'
-              ? 'bg-[#063D2B] text-white font-extrabold shadow-xs flex-1'
-              : 'text-[#6E6E73] hover:text-[#151515] font-semibold'
-          }`}
-        >
-          <Search
-            className={`size-4 shrink-0 ${
-              activeTab === 'lookup' ? 'text-[#B5F44A]' : 'text-[#6E6E73]'
-            }`}
-          />
-          <span className="text-[11px] whitespace-nowrap">Meus Nºs</span>
-          {participations.length > 0 && activeTab !== 'lookup' && (
-            <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-[#16A34A]" />
+          <Grid3X3 className="size-5" aria-hidden="true" />
+          <span className="text-[11px] leading-tight">Números</span>
+          {selectedNumbers.length > 0 && activeTab !== 'numbers' && (
+            <span className="absolute top-1.5 right-3.5 px-1.5 py-0.2 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] text-[9px] font-extrabold tabular-nums">
+              {selectedNumbers.length}
+            </span>
           )}
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveTab('results')}
-          aria-label="Resultados"
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl cursor-pointer transition-all duration-150 ${
-            activeTab === 'results'
-              ? 'bg-[#063D2B] text-white font-extrabold shadow-xs flex-1'
-              : 'text-[#6E6E73] hover:text-[#151515] font-semibold'
+          onClick={() => setActiveTab('lookup')}
+          aria-label="Minhas participações"
+          aria-current={activeTab === 'lookup' ? 'page' : undefined}
+          className={`relative flex flex-col items-center justify-center gap-0.5 py-2 rounded-[20px] cursor-pointer transition-colors duration-150 ${
+            activeTab === 'lookup'
+              ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+              : 'text-[#929a94] hover:text-white font-medium'
           }`}
         >
-          <Trophy
-            className={`size-4 shrink-0 ${
-              activeTab === 'results' ? 'text-[#B5F44A]' : 'text-[#6E6E73]'
-            }`}
-          />
-          <span className="text-[11px] whitespace-nowrap">Resultados</span>
+          <Ticket className="size-5" aria-hidden="true" />
+          <span className="text-[11px] leading-tight">Participações</span>
+          {participations.length > 0 && activeTab !== 'lookup' && (
+            <span className="absolute top-1.5 right-3.5 size-2 rounded-full bg-[var(--brand-accent)]" />
+          )}
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveTab('admin')}
-          aria-label="Admin"
-          className={`flex items-center justify-center gap-1 py-2.5 px-2.5 rounded-2xl cursor-pointer transition-all duration-150 ${
-            activeTab === 'admin'
-              ? 'bg-[#0A1713] text-white font-extrabold shadow-xs'
-              : 'text-[#6E6E73] hover:text-[#151515] font-semibold'
+          onClick={() => setActiveTab('profile')}
+          aria-label="Perfil"
+          aria-current={activeTab === 'profile' ? 'page' : undefined}
+          className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-[20px] cursor-pointer transition-colors duration-150 ${
+            activeTab === 'profile'
+              ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-extrabold'
+              : 'text-[#929a94] hover:text-white font-medium'
           }`}
         >
-          <Lock className="size-3.5 shrink-0" />
-          <span className="text-[10px]">Admin</span>
+          <User className="size-5" aria-hidden="true" />
+          <span className="text-[11px] leading-tight">Perfil</span>
         </button>
       </nav>
 
-      {/* SEO & Reverse-Marketing Footer */}
-      <footer className="bg-white border-t border-black/[0.06] mt-10 pb-24 md:pb-6">
-        <div className="max-w-[1140px] mx-auto px-4 sm:px-6 py-6 space-y-4 text-xs text-[#6E6E73]">
+      {/* FAQ, Suporte Oficial, LGPD & Transparency Footer */}
+      <footer className="bg-[#0b0f0c] border-t border-white/[0.09] mt-12 pb-28 md:pb-8 text-[#929a94]">
+        <div className="max-w-[1180px] mx-auto px-4 sm:px-6 py-8 space-y-6 text-xs">
+          {/* Interactive Accessible FAQ & Support Strip */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6 border-b border-white/[0.08]">
+            <div className="lg:col-span-4 space-y-2.5">
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[var(--brand-accent)] block">
+                Dúvidas Frequentes & Suporte
+              </span>
+              <h2 className="text-lg font-extrabold text-[#f5f7f3] tracking-tight text-balance">
+                Transparência total antes de você escolher seu número
+              </h2>
+              <p className="text-xs text-[#929a94] leading-relaxed text-pretty">
+                Regras claras, probabilidade real de 1 em 75 e atendimento direto pelo WhatsApp sem
+                robôs ou letras miúdas.
+              </p>
+              <a
+                href={`https://wa.me/${(adminConfig.whatsappSupportNumber || '5585985252317').replace(
+                  /\D/g,
+                  ''
+                )}?text=${encodeURIComponent(
+                  'Olá! Preciso de atendimento / suporte sobre a Chance Premiada.'
+                )}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold transition-all"
+              >
+                <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+                <span>Falar com Suporte no WhatsApp</span>
+              </a>
+            </div>
+
+            <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <details className="group rounded-2xl bg-[#111512] border border-white/[0.09] p-3.5">
+                <summary className="cursor-pointer font-bold text-[#f5f7f3] list-none flex items-center justify-between gap-2">
+                  <span>Como funciona a regra da 1ª bola (1 em 75)?</span>
+                  <span className="text-[var(--brand-accent)] font-mono text-sm group-open:rotate-45 transition-transform">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-2 text-[11px] text-[#929a94] leading-relaxed">
+                  Cada edição possui exatamente 75 números únicos (01 a 75). Assim que a grade fecha,
+                  a 1ª bola sorteada define o ganhador integral do prêmio no PIX.
+                </p>
+              </details>
+
+              <details className="group rounded-2xl bg-[#111512] border border-white/[0.09] p-3.5">
+                <summary className="cursor-pointer font-bold text-[#f5f7f3] list-none flex items-center justify-between gap-2">
+                  <span>Como recebo o prêmio no PIX se ganhar?</span>
+                  <span className="text-[var(--brand-accent)] font-mono text-sm group-open:rotate-45 transition-transform">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-2 text-[11px] text-[#929a94] leading-relaxed">
+                  O sistema identifica automaticamente o titular pelo WhatsApp cadastrado na compra e
+                  envia o PIX na hora, com publicação do comprovante na aba Resultados.
+                </p>
+              </details>
+
+              <details className="group rounded-2xl bg-[#111512] border border-white/[0.09] p-3.5">
+                <summary className="cursor-pointer font-bold text-[#f5f7f3] list-none flex items-center justify-between gap-2">
+                  <span>A Raspadinha Bônus tem custo extra?</span>
+                  <span className="text-[var(--brand-accent)] font-mono text-sm group-open:rotate-45 transition-transform">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-2 text-[11px] text-[#929a94] leading-relaxed">
+                  Não. Ao confirmar sua participação no PIX, você recebe gratuitamente 1 Raspadinha
+                  Digital auditável com chance de desconto imediato ou cartela extra.
+                </p>
+              </details>
+
+              <details className="group rounded-2xl bg-[#111512] border border-white/[0.09] p-3.5">
+                <summary className="cursor-pointer font-bold text-[#f5f7f3] list-none flex items-center justify-between gap-2">
+                  <span>Meus dados estão seguros pela LGPD?</span>
+                  <span className="text-[var(--brand-accent)] font-mono text-sm group-open:rotate-45 transition-transform">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-2 text-[11px] text-[#929a94] leading-relaxed">
+                  Sim. Em conformidade com a LGPD (Lei nº 13.709/2018), seu nome e WhatsApp são
+                  mascarados no ranking público, seus números nunca ficam visíveis a terceiros e
+                  usamos seus dados apenas para comprovante e entrega do prêmio.
+                </p>
+              </details>
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <div className="h-9 px-2 rounded-xl bg-[#063D2B] flex items-center justify-center border border-[#D5AC58]/40">
+              <div className="size-9 rounded-xl bg-[var(--brand-accent)] flex items-center justify-center -rotate-6 shrink-0">
                 <img
                   src={chancePremiadaLogo}
                   alt="Chance Premiada"
-                  className="h-7 w-auto object-contain"
+                  className="h-6 w-auto object-contain rotate-6"
                 />
               </div>
               <div>
-                <span className="font-extrabold text-[#1D1D1F] block">
+                <span className="font-extrabold text-[#f5f7f3] block">
                   Chance Premiada Oficial · {adminConfig.cityRegionLabel || 'Maracanaú & Fortaleza - CE'}
                 </span>
                 <span>
-                  Apenas 75 números únicos (01 a 75) · Saiu na 1ª bola, ganhou o PIX na hora + Raspadinha Digital.
+                  Apenas 75 números únicos (01 a 75) · Regra clara da 1ª bola + Raspadinha Digital.
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('admin')}
-              className="text-[#6E6E73] hover:text-[#1D1D1F] flex items-center gap-1 cursor-pointer font-medium"
-            >
-              <Lock className="w-3 h-3" /> Área do Administrador
-            </button>
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#111512] border border-white/[0.09] text-[10px] font-bold text-[var(--brand-accent)]">
+                <ShieldCheck className="w-3 h-3" aria-hidden="true" /> LGPD · Lei 13.709/2018
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveTab('admin')}
+                className="text-[#929a94] hover:text-[#f5f7f3] flex items-center gap-1 cursor-pointer font-medium"
+              >
+                <Lock className="w-3 h-3" /> Área do Administrador
+              </button>
+            </div>
           </div>
 
-          {/* SEO & Reverse Marketing Comparison Block for Search Engines */}
-          <div className="pt-3 border-t border-black/[0.05] text-[11px] text-[#86868B] leading-relaxed">
-            <strong className="text-[#1D1D1F]">
-              Por que você tem muito mais chance aqui (Matemática Real 1 em 75):
+          {/* Ethical Transparency & Odds Note */}
+          <div className="pt-3 border-t border-white/[0.06] text-[11px] text-[#747c76] leading-relaxed">
+            <strong className="text-[#f5f7f3]">
+              Transparência & Probabilidade Real (1 em 75 por número):
             </strong>{' '}
-            Diferente de sorteios de milhar ou títulos tradicionais onde o participante concorre
-            contra centenas de milhares de bilhetes (como quem busca resultados de{' '}
-            <em>Fortcap, Totolec Show, Canal da Sorte ou Lotece / Loteria dos Sonhos no Ceará</em>),
-            na <strong>Chance Premiada</strong> cada edição possui uma grade fechada de{' '}
-            <strong>apenas 75 números (01 a 75)</strong>. Não precisa preencher cartela inteira: a{' '}
-            <strong>1ª bola sorteada</strong> já leva o prêmio no PIX instantaneamente, além de
-            liberar 1 Raspadinha Digital Bônus e cupons de desconto no comércio de Maracanaú e
-            Região Metropolitana de Fortaleza.
+            Diferente de sorteios de milhar ou títulos tradicionais com centenas de milhares de
+            bilhetes, na <strong>Chance Premiada</strong> cada edição possui uma grade fechada de{' '}
+            <strong>apenas 75 números (01 a 75)</strong>. A participação é recreativa e transparente:
+            a <strong>1ª bola sorteada</strong> define o ganhador do PIX, sem promessas irreais de
+            ganho garantido. Jogue com responsabilidade.
           </div>
         </div>
       </footer>

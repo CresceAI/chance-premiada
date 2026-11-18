@@ -20,6 +20,10 @@ import {
   Copy,
   Check,
   Plus,
+  ChevronRight,
+  Trophy,
+  BookOpen,
+  Grid3X3,
 } from 'lucide-react';
 import {
   DEFAULT_PARTNER_COUPONS,
@@ -42,6 +46,9 @@ interface ParticipationsAndLoyaltyViewProps {
   partnerCoupons?: PartnerStoreCoupon[];
   cityRegionLabel?: string;
   supportWhatsapp?: string;
+  viewMode?: 'participations' | 'profile';
+  onNavigateResults?: () => void;
+  onNavigateHowToPlay?: () => void;
   onRedeemPartnerCoupon?: (couponId: string) => void;
   onRegisterPartnerStore?: (newCoupon: PartnerStoreCoupon) => void;
   onScratchRevealed: (participationId: string) => void;
@@ -55,7 +62,10 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
   remarketingDiscountBRL = 0,
   partnerCoupons = DEFAULT_PARTNER_COUPONS,
   cityRegionLabel = 'Maracanaú - CE',
-  supportWhatsapp = '5585999999999',
+  supportWhatsapp = '5585985252317',
+  viewMode = 'participations',
+  onNavigateResults,
+  onNavigateHowToPlay,
   onRedeemPartnerCoupon,
   onRegisterPartnerStore,
   onScratchRevealed,
@@ -63,6 +73,7 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
 }) => {
   const [whatsappQuery, setWhatsappQuery] = useState(lastUsedWhatsapp || '');
   const [searchedPhone, setSearchedPhone] = useState(lastUsedWhatsapp || '');
+  const [isSearching, setIsSearching] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'all' | PartnerStoreCategory>('all');
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<string>('Todos');
 
@@ -93,7 +104,9 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSearching(true);
     setSearchedPhone(whatsappQuery);
+    setTimeout(() => setIsSearching(false), 220);
   };
 
   const nextMilestone = 150;
@@ -115,40 +128,45 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
     <div className="space-y-6 pb-20 lg:pb-8">
       {/* Header & Zero-Registration Lookup Card + VIP Loyalty Status */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        <section className="lg:col-span-8 bg-white rounded-3xl border border-black/[0.06] p-5 sm:p-7 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between">
+        <section
+          className={`${
+            viewMode === 'profile' ? 'hidden md:flex' : 'flex'
+          } lg:col-span-8 bg-[#111512] rounded-3xl border border-white/[0.09] p-5 sm:p-7 shadow-[0_12px_40px_rgba(0,0,0,0.3)] flex-col justify-between`}
+        >
           <div>
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#15803D] bg-[#F0FDF4] px-3 py-1 rounded-lg border border-[#BBF7D0] mb-3">
-              <Smartphone className="w-3.5 h-3.5" /> Carteira Digital · Zero Cadastro / Sem Senha
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--brand-accent)] bg-[var(--brand-accent)]/10 border border-[var(--brand-accent)]/25 px-3 py-1 rounded-lg mb-3">
+              <Smartphone className="w-3.5 h-3.5" /> Carteira Digital · Sem Senha
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1D1D1F] tracking-tight">
-              Consulte seus Números pelo WhatsApp
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#f5f7f3] tracking-tight">
+              Minhas Participações
             </h1>
-            <p className="text-sm text-[#6E6E73] mt-1.5 leading-relaxed max-w-2xl">
-              Você <strong>não precisa criar conta nem decorar senha</strong>. Digite o mesmo
-              WhatsApp usado no PIX para ver seus bilhetes oficiais, raspar sua Raspadinha e
-              conferir o resultado da 1ª bola.
+            <p className="text-sm text-[#929a94] mt-1.5 leading-relaxed max-w-2xl">
+              Digite o mesmo WhatsApp usado no PIX para consultar seus números, acompanhar a
+              aprovação e raspar sua Raspadinha Digital.
             </p>
           </div>
 
           <form onSubmit={handleSearch} className="mt-5 flex flex-col sm:flex-row gap-2.5">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-[#86868B] absolute left-4 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-[#929a94] absolute left-4 top-1/2 -translate-y-1/2" />
               <input
                 type="tel"
+                aria-label="WhatsApp com DDD"
                 value={whatsappQuery}
                 onChange={(e) => {
                   setWhatsappQuery(e.target.value);
                   setSearchedPhone(e.target.value);
                 }}
-                placeholder="Digite seu WhatsApp com DDD (ex: 11 98765-4321)"
-                className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-black/[0.1] bg-[#F5F5F7]/70 focus:bg-white text-sm text-[#1D1D1F] font-semibold focus:outline-none focus:border-[#16A34A]"
+                placeholder="WhatsApp com DDD (ex: 85 98765-4321)"
+                className="w-full h-12 pl-11 pr-4 rounded-2xl border border-white/[0.1] bg-[#171c18] focus:bg-[#1c231d] text-sm text-[#f5f7f3] placeholder:text-[#5e6660] font-semibold focus:outline-none focus:border-[var(--brand-accent)]"
               />
             </div>
             <button
               type="submit"
-              className="px-6 py-3.5 rounded-2xl bg-[#1D1D1F] hover:bg-[#333336] text-white font-bold text-sm transition-colors cursor-pointer shrink-0"
+              className="w-full sm:w-auto h-12 px-6 rounded-2xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] font-extrabold text-sm transition-all cursor-pointer shrink-0 inline-flex items-center justify-center gap-2 shadow-xs"
             >
-              Buscar Números
+              <Search className="size-4" />
+              <span>Buscar Números</span>
             </button>
           </form>
 
@@ -172,7 +190,11 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
         </section>
 
         {/* VIP Loyalty & Chance Coins Club Card */}
-        <aside className="lg:col-span-4 bg-gradient-to-br from-[#1D1D1F] via-[#27272A] to-[#1D1D1F] text-white rounded-3xl p-5 sm:p-6 flex flex-col justify-between space-y-4 shadow-md">
+        <aside
+          className={`${
+            viewMode === 'participations' ? 'hidden md:flex' : 'flex'
+          } lg:col-span-4 bg-[#111512] border border-white/[0.09] text-[#f5f7f3] rounded-3xl p-5 sm:p-6 flex-col justify-between space-y-4 shadow-[0_12px_40px_rgba(0,0,0,0.3)] transition-colors duration-300`}
+        >
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#4ADE80] bg-white/10 px-2.5 py-1 rounded-lg">
@@ -212,9 +234,9 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
           </div>
 
           {remarketingDiscountBRL > 0 ? (
-            <div className="p-3.5 rounded-2xl bg-[#16A34A]/25 border border-[#4ADE80]/40 space-y-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#4ADE80]">
-                <Gift className="w-4 h-4 shrink-0" />
+            <div className="p-3.5 rounded-2xl bg-[#171c18] border border-[var(--brand-accent)]/30 space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--brand-accent)]">
+                <Gift className="w-4 h-4 shrink-0" aria-hidden="true" />
                 <span>
                   Cupom de R$ {remarketingDiscountBRL.toFixed(2).replace('.', ',')} Disponível!
                 </span>
@@ -222,7 +244,7 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
               <button
                 type="button"
                 onClick={onNavigateToGrid}
-                className="w-full py-2 px-3 rounded-xl bg-[#22C55E] hover:bg-[#16A34A] text-[#1D1D1F] font-extrabold text-xs transition-colors cursor-pointer"
+                className="w-full py-2.5 px-3 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] font-extrabold text-xs transition-all cursor-pointer"
               >
                 Usar Meu Desconto na Grade →
               </button>
@@ -248,18 +270,110 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
         </aside>
       </div>
 
+      {/* MOBILE PROFILE SETTINGS-STYLE GROUPED NAVIGATION (Dark Obsidian + Lime Redesign) */}
+      {viewMode === 'profile' && (
+        <section
+          aria-label="Atalhos da Conta"
+          className="md:hidden bg-[#111512] rounded-3xl border border-white/[0.09] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.3)] divide-y divide-white/[0.07]"
+        >
+          {onNavigateResults && (
+            <button
+              type="button"
+              onClick={onNavigateResults}
+              className="w-full px-4 py-3.5 flex items-center justify-between gap-3 hover:bg-[#171c18] active:bg-[#1e261f] text-left cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="size-9 rounded-full bg-[#171c18] border border-white/[0.09] text-[var(--brand-accent)] flex items-center justify-center shrink-0">
+                  <Trophy className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <strong className="text-sm font-bold text-[#f5f7f3] block truncate">
+                    Resultados Oficiais
+                  </strong>
+                  <span className="text-[11px] text-[#929a94] block truncate">
+                    Ver ganhadores da 1ª bola
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-[#929a94] shrink-0" />
+            </button>
+          )}
+          {onNavigateHowToPlay && (
+            <button
+              type="button"
+              onClick={onNavigateHowToPlay}
+              className="w-full px-4 py-3.5 flex items-center justify-between gap-3 hover:bg-[#171c18] active:bg-[#1e261f] text-left cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="size-9 rounded-full bg-[#171c18] border border-white/[0.09] text-[var(--brand-accent)] flex items-center justify-center shrink-0">
+                  <BookOpen className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <strong className="text-sm font-bold text-[#f5f7f3] block truncate">
+                    Tutorial Como Jogar
+                  </strong>
+                  <span className="text-[11px] text-[#929a94] block truncate">
+                    Aprenda em 30 segundos
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-[#929a94] shrink-0" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onNavigateToGrid}
+            className="w-full px-4 py-3.5 flex items-center justify-between gap-3 hover:bg-[#171c18] active:bg-[#1e261f] text-left cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="size-9 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] flex items-center justify-center shrink-0">
+                <Grid3X3 className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <strong className="text-sm font-bold text-[#f5f7f3] block truncate">
+                  Escolher Números (01–75)
+                </strong>
+                <span className="text-[11px] text-[#929a94] block truncate">
+                  Ir direto para a grade ativa
+                </span>
+              </div>
+            </div>
+            <ChevronRight className="size-4 text-[#929a94] shrink-0" />
+          </button>
+        </section>
+      )}
+
       {/* Results List */}
-      {matchedRecords.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-black/[0.06] p-8 sm:p-12 text-center shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-          <div className="w-13 h-13 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-center justify-center mx-auto mb-3 text-[#16A34A]">
+      <div className={viewMode === 'profile' ? 'hidden md:block' : 'block'}>
+      {isSearching ? (
+        <div className="space-y-4" aria-busy="true" aria-label="Buscando participações">
+          {[1, 2].map((item) => (
+            <div
+              key={item}
+              className="bg-[#111512] rounded-3xl border border-white/[0.08] p-5 sm:p-6 space-y-4 animate-pulse"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 w-36 rounded-lg bg-[#171c18]" />
+                  <div className="h-5 w-56 rounded-lg bg-[#171c18]" />
+                </div>
+                <div className="h-8 w-24 rounded-xl bg-[#171c18]" />
+              </div>
+              <div className="h-24 w-full rounded-2xl bg-[#171c18]" />
+            </div>
+          ))}
+        </div>
+      ) : matchedRecords.length === 0 ? (
+        <div className="bg-[#111512] rounded-3xl border border-white/[0.09] p-8 sm:p-12 text-center shadow-[0_12px_40px_rgba(0,0,0,0.3)]">
+          <div className="size-13 rounded-2xl bg-[var(--brand-accent)]/10 border border-[var(--brand-accent)]/25 flex items-center justify-center mx-auto mb-3 text-[var(--brand-accent)]">
             <Ticket className="w-6 h-6" />
           </div>
-          <h2 className="text-lg font-extrabold text-[#1D1D1F]">
+          <h2 className="text-lg font-extrabold text-[#f5f7f3]">
             {normalizeWhatsapp(searchedPhone).length >= 8
               ? 'Nenhuma participação encontrada para este WhatsApp'
               : 'Tudo zerado! Nenhuma compra realizada ainda'}
           </h2>
-          <p className="text-sm text-[#6E6E73] max-w-md mx-auto mt-1 mb-5">
+          <p className="text-sm text-[#929a94] max-w-md mx-auto mt-1 mb-5">
             {normalizeWhatsapp(searchedPhone).length >= 8
               ? 'Verifique os dígitos do DDD + número ou escolha um número verde na grade 01 a 75 para testar agora.'
               : 'O sistema iniciou 100% zerado (0/75 vendidos). Escolha um número na grade principal e faça um teste para ver seu comprovante e sua Raspadinha aparecerem aqui.'}
@@ -274,11 +388,11 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-base font-extrabold text-[#1D1D1F]">
+            <h2 className="text-base font-extrabold text-[#f5f7f3]">
               Participações Localizadas ({matchedRecords.length})
             </h2>
-            <span className="text-xs font-semibold text-[#15803D] bg-[#F0FDF4] px-2.5 py-1 rounded-lg border border-[#BBF7D0] flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#16A34A]" /> Protegido por Trava Única PIX
+            <span className="text-xs font-semibold text-[var(--brand-accent)] bg-[var(--brand-accent)]/10 px-2.5 py-1 rounded-lg border border-[var(--brand-accent)]/25 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> Protegido por Trava Única PIX
             </span>
           </div>
 
@@ -288,19 +402,19 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
-              className="bg-white rounded-3xl border border-black/[0.08] p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-4 overflow-hidden"
+              className="bg-[#111512] rounded-3xl border border-white/[0.09] p-5 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.3)] space-y-4 overflow-hidden"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-extrabold text-[#1D1D1F] bg-[#F5F5F7] px-2.5 py-1 rounded-lg">
+                    <span className="text-xs font-extrabold text-[#f5f7f3] bg-[#171c18] border border-white/[0.08] px-2.5 py-1 rounded-lg">
                       {part.editionNumber}
                     </span>
                     <span
                       className={`text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 ${
                         part.status === 'Aguardando Fechar 75 Nºs'
-                          ? 'bg-[#FEF3C7] text-[#B45309]'
-                          : 'bg-[#DCFCE7] text-[#15803D]'
+                          ? 'bg-[#D9B85D]/15 text-[#D9B85D] border border-[#D9B85D]/25'
+                          : 'bg-[var(--brand-accent)]/15 text-[var(--brand-accent)] border border-[var(--brand-accent)]/25'
                       }`}
                     >
                       {part.status === 'Aguardando Fechar 75 Nºs' ? (
@@ -310,27 +424,27 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
                       )}
                       {part.status}
                     </span>
-                    <span className="text-[11px] font-bold text-[#D97706] bg-[#FEF3C7]/60 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-[#D9B85D] bg-[#D9B85D]/15 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
                       <Coins className="w-3 h-3" /> +{part.coinsEarned} Coins
                     </span>
                   </div>
-                  <h3 className="text-base font-extrabold text-[#1D1D1F] mt-2">
+                  <h3 className="text-base font-extrabold text-[#f5f7f3] mt-2">
                     {part.prizeTitle}
                   </h3>
-                  <p className="text-xs text-[#6E6E73] mt-0.5">
-                    Titular: <strong className="text-[#1D1D1F]">{part.customerName}</strong> ·
+                  <p className="text-xs text-[#929a94] mt-0.5">
+                    Titular: <strong className="text-[#f5f7f3]">{part.customerName}</strong> ·
                     WhatsApp: <span className="font-mono">{part.customerWhatsappFormatted}</span> ·{' '}
                     {part.date}
                   </p>
                 </div>
 
                 <div className="text-right">
-                  <p className="text-[11px] font-semibold text-[#6E6E73]">Seus Números Únicos</p>
+                  <p className="text-[11px] font-semibold text-[#929a94]">Seus Números Únicos</p>
                   <div className="flex flex-wrap gap-1.5 justify-end mt-1">
                     {part.numbers.map((n) => (
                       <span
                         key={n}
-                        className="px-3 py-1 rounded-xl bg-gradient-to-b from-[#16A34A] to-[#15803D] text-white font-mono font-extrabold text-sm shadow-xs"
+                        className="px-3 py-1 rounded-xl bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-mono font-extrabold text-sm shadow-xs"
                       >
                         Nº {n}
                       </span>
@@ -341,11 +455,11 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
 
               {/* Perforated Ticket Divider */}
               <div className="ticket-divider pt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="text-[#6E6E73]">
-                  Status do Sorteio: <strong className="text-[#1D1D1F]">{part.result}</strong>
+                <span className="text-[#929a94]">
+                  Status do Sorteio: <strong className="text-[#f5f7f3]">{part.result}</strong>
                 </span>
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-[11px] text-[#86868B]">
+                  <span className="font-mono text-[11px] text-[#747c76]">
                     Comprovante: {part.pixTxId} · R$ {part.amountPaid.toFixed(2).replace('.', ',')}
                   </span>
                   <a
@@ -356,7 +470,7 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
                     )}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[#15803D] font-bold hover:underline"
+                    className="inline-flex items-center gap-1 text-[var(--brand-accent)] font-bold hover:underline"
                   >
                     <Share2 className="w-3 h-3" /> Salvar no WhatsApp
                   </a>
@@ -393,7 +507,7 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
                       )}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-3.5 py-2 rounded-xl bg-[#063D2B] text-[#B5F44A] text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0"
+                      className="px-3.5 py-2 rounded-xl bg-[var(--brand-primary)] text-[var(--brand-accent)] text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0"
                     >
                       <MessageCircle className="size-3.5" />
                       <span>Enviar Comprovante</span>
@@ -411,38 +525,38 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
           ))}
         </div>
       )}
+      </div>
 
       {/* =====================================================================
-          CLUBE DE CUPONS & COMÉRCIOS PARCEIROS DE MARACANAÚ (ESTILO IFOOD / ZÉ DELIVERY / WECHAT)
+          CLUBE DE CUPONS & COMÉRCIOS PARCEIROS DE MARACANAÚ
       ===================================================================== */}
       <section
-        className="bg-white rounded-3xl border border-black/[0.06] p-5 sm:p-7 space-y-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)]"
+        className={`${
+          viewMode === 'participations' ? 'hidden md:block' : 'block'
+        } bg-[#111512] rounded-3xl border border-white/[0.09] p-4 sm:p-7 space-y-5 shadow-[0_12px_40px_rgba(0,0,0,0.3)]`}
         data-testid="partner-coupons-club-section"
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1 max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#B45309] bg-[#FEF3C7] px-3 py-1 rounded-lg border border-[#FDE68A]">
-              <Store className="w-3.5 h-3.5" /> Clube de Cupons (Em Fase de Teste) · {cityRegionLabel}
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[var(--brand-accent)] bg-[var(--brand-accent)]/10 px-3 py-1 rounded-full border border-[var(--brand-accent)]/25">
+              <Store className="w-3.5 h-3.5" /> Clube Chance+ · {cityRegionLabel}
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#1D1D1F] tracking-tight">
-              Buscando Patrocinadores & Apoiadores Oficiais: Seja Nosso Parceiro e Aumente Suas Vendas!
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#f5f7f3] tracking-tight leading-snug text-balance">
+              Seu número vale mais, mesmo depois do sorteio.
             </h2>
-            <p className="text-xs sm:text-sm text-[#6E6E73] leading-relaxed">
-              Esta vitrine está em <strong>fase de teste e seleção comercial</strong> em{' '}
-              {cityRegionLabel}. Abaixo você vê exemplos reais de como os cupons e o mini-catálogo
-              funcionam — se você tem um comércio, delivery ou serviço,{' '}
-              <strong className="text-[#15803D]">
-                coloque sua marca aqui para receber clientes todos os dias no seu WhatsApp!
-              </strong>
+            <p className="text-xs sm:text-sm text-[#929a94] leading-relaxed text-pretty">
+              Benefícios exclusivos em negócios de {cityRegionLabel} para quem participa da Chance
+              Premiada — feche parceria para receber clientes direto no WhatsApp com{' '}
+              <strong className="text-[var(--brand-accent)]">zero taxa por pedido</strong>.
             </p>
           </div>
 
-          <div className="px-3.5 py-2.5 rounded-2xl bg-[#FEF3C7]/60 border border-[#FDE68A] text-right">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#B45309] block">
-              Status da Vitrine Comercial
+          <div className="px-3.5 py-2.5 rounded-2xl bg-[#171c18] border border-white/[0.09] text-left sm:text-right">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#929a94] block">
+              Vitrine Comercial
             </span>
-            <span className="text-xs font-extrabold text-[#B45309] inline-flex items-center gap-1">
-              <Flame className="w-3.5 h-3.5" /> Em Teste · Captação de Parceiros
+            <span className="text-xs font-extrabold text-[var(--brand-accent)] inline-flex items-center gap-1">
+              <Flame className="w-3.5 h-3.5" /> Captação de Parceiros
             </span>
           </div>
         </div>
@@ -514,10 +628,10 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
                 key={cat.id}
                 type="button"
                 onClick={() => setSelectedCategory(cat.id as 'all' | PartnerStoreCategory)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3.5 py-2 rounded-full text-xs font-bold transition-colors cursor-pointer ${
                   selectedCategory === cat.id
-                    ? 'bg-[#063D2B] text-white'
-                    : 'bg-[#F2F4F7] text-[#52525B] hover:text-[#151515]'
+                    ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-ink)]'
+                    : 'bg-[#171c18] text-[#929a94] hover:text-white border border-white/[0.08]'
                 }`}
               >
                 {cat.label}
@@ -546,27 +660,27 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
           </div>
         </div>
 
-        {/* Partner Store Coupons + Mini-Catalog Grid */}
+        {/* Partner Store Coupons + Mini-Catalog Grid (Redesign Obsidian Cards) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredCoupons.map((coupon) => (
             <div
               key={coupon.id}
-              className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-3 transition-colors bg-white ${
+              className={`rounded-3xl border p-4 sm:p-5 flex flex-col justify-between gap-3 transition-colors bg-[#171c18] ${
                 coupon.isSponsoredHighlight
-                  ? 'border-[#16A34A]/35 shadow-xs'
-                  : 'border-black/[0.08]'
+                  ? 'border-[var(--brand-accent)]/35'
+                  : 'border-white/[0.09]'
               }`}
             >
               <div className="space-y-3">
                 {/* Official 16:9 Partner Ad Banner (Showcase or Real Partner) */}
-                <div className="relative rounded-xl overflow-hidden border border-black/[0.08] group">
+                <div className="relative rounded-2xl overflow-hidden border border-white/[0.09] group">
                   <img
                     src={resolvePartnerCouponBanner(coupon)}
                     alt={`Anúncio ${coupon.storeName}`}
                     className="w-full h-auto object-cover block transition-transform duration-200 group-hover:scale-[1.01]"
                   />
                   {coupon.isDemoSlot && (
-                    <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-[#0A1713]/85 backdrop-blur-xs border border-white/15 text-[#B5F44A] text-[10px] font-bold shadow-sm">
+                    <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-[#080b09]/85 backdrop-blur-xs border border-white/15 text-[var(--brand-accent)] text-[10px] font-bold shadow-sm">
                       Exemplo Demonstrativo
                     </div>
                   )}
@@ -574,59 +688,59 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-lg bg-[#16A34A] text-white font-mono text-xs font-extrabold">
+                    <span className="px-2.5 py-1 rounded-lg bg-[var(--brand-accent)] text-[var(--brand-accent-ink)] font-mono text-xs font-extrabold">
                       {coupon.discountLabel}
                     </span>
                     {coupon.isDemoSlot ? (
-                      <span className="px-2 py-0.5 rounded-md bg-[#FEF3C7] text-[#B45309] border border-[#FDE68A] text-[10px] font-extrabold inline-flex items-center gap-1">
-                        <Flame className="w-3 h-3" /> Anúncio Modelo · Vaga p/ Patrocinador
+                      <span className="px-2 py-0.5 rounded-md bg-[#D9B85D]/15 text-[#D9B85D] border border-[#D9B85D]/30 text-[10px] font-extrabold inline-flex items-center gap-1">
+                        <Flame className="w-3 h-3" /> Anúncio Modelo
                       </span>
                     ) : (
                       coupon.isSponsoredHighlight && (
-                        <span className="px-2 py-0.5 rounded-md bg-[#FEF3C7] text-[#B45309] border border-[#FDE68A] text-[10px] font-bold inline-flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-md bg-[#D9B85D]/15 text-[#D9B85D] border border-[#D9B85D]/30 text-[10px] font-bold inline-flex items-center gap-1">
                           <Flame className="w-3 h-3" /> Parceiro Destaque
                         </span>
                       )
                     )}
                   </div>
-                  <span className="text-[11px] font-mono font-bold text-[#B45309] bg-[#FEF3C7]/70 px-2 py-0.5 rounded-md">
+                  <span className="text-[11px] font-mono font-bold text-[#D9B85D] bg-white/[0.06] px-2 py-0.5 rounded-md">
                     {coupon.isDemoSlot ? 'Espaço Aberto' : `${coupon.coinsCost} Coins`}
                   </span>
                 </div>
 
                 <div>
-                  <h3 className="text-base font-extrabold text-[#1D1D1F]">{coupon.storeName}</h3>
-                  <p className="text-[11px] text-[#6E6E73] flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3 text-[#16A34A] shrink-0" />
+                  <h3 className="text-base font-extrabold text-[#f5f7f3]">{coupon.storeName}</h3>
+                  <p className="text-[11px] text-[#929a94] flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-3 h-3 text-[var(--brand-accent)] shrink-0" />
                     <span>{coupon.neighborhood}</span>
                   </p>
                 </div>
 
-                <p className="text-xs sm:text-sm font-bold text-[#15803D] leading-snug">
+                <p className="text-xs sm:text-sm font-bold text-[var(--brand-accent)] leading-snug">
                   {coupon.offerTitle}
                 </p>
 
-                {/* Mini-Catálogo de Produtos com Desconto (Estilo iFood / Zé Delivery) */}
+                {/* Mini-Catálogo de Produtos com Desconto */}
                 {coupon.catalogItems && coupon.catalogItems.length > 0 && (
-                  <div className="p-2.5 rounded-xl bg-white/90 border border-black/[0.06] space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73] block">
+                  <div className="p-2.5 rounded-xl bg-[#111512] border border-white/[0.07] space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#929a94] block">
                       {coupon.isDemoSlot
-                        ? 'Exemplo de Catálogo da Sua Empresa no App:'
+                        ? 'Exemplo de Catálogo no App:'
                         : 'Catálogo Rápido no App:'}
                     </span>
                     {coupon.catalogItems.map((item, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between gap-2 text-xs py-0.5 border-b last:border-b-0 border-black/[0.04]"
+                        className="flex items-center justify-between gap-2 text-xs py-0.5 border-b last:border-b-0 border-white/[0.06]"
                       >
-                        <span className="font-medium text-[#1D1D1F] truncate">{item.name}</span>
-                        <div className="flex items-center gap-1.5 shrink-0 font-mono">
+                        <span className="font-medium text-[#f5f7f3] truncate">{item.name}</span>
+                        <div className="flex items-center gap-1.5 shrink-0 font-mono tabular-nums">
                           {item.oldPriceBRL && (
-                            <span className="text-[10px] line-through text-[#86868B]">
+                            <span className="text-[10px] line-through text-[#747c76]">
                               R$ {item.oldPriceBRL}
                             </span>
                           )}
-                          <strong className="text-xs font-extrabold text-[#15803D]">
+                          <strong className="text-xs font-extrabold text-[var(--brand-accent)]">
                             R$ {item.promoPriceBRL}
                           </strong>
                         </div>
@@ -635,19 +749,19 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
                   </div>
                 )}
 
-                <p className="text-[11px] text-[#6E6E73]">{coupon.minOrderRule}</p>
+                <p className="text-[11px] text-[#929a94]">{coupon.minOrderRule}</p>
               </div>
 
-              <div className="pt-3 border-t border-black/[0.06] flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[11px] text-[#6E6E73]">
+              <div className="pt-3 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[11px] text-[#929a94]">
                   {coupon.isDemoSlot ? (
-                    <span className="font-bold text-[#B45309] inline-flex items-center gap-1">
+                    <span className="font-bold text-[#D9B85D] inline-flex items-center gap-1">
                       <Store className="size-3.5 shrink-0" /> Espaço disponível p/ sua empresa
                     </span>
                   ) : (
                     <>
                       Código:{' '}
-                      <strong className="font-mono text-[#1D1D1F] bg-white px-2 py-0.5 rounded border border-black/[0.08] inline-flex items-center gap-1">
+                      <strong className="font-mono text-[#f5f7f3] bg-[#111512] px-2 py-0.5 rounded border border-white/[0.1] inline-flex items-center gap-1">
                         {hasUnlockedClub ? (
                           coupon.couponCode
                         ) : (
@@ -670,10 +784,10 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
                     )}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-3.5 py-2 rounded-xl bg-[#063D2B] hover:bg-[#0B5339] text-[#B5F44A] text-xs font-extrabold inline-flex items-center gap-1.5 transition-colors shadow-xs"
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold inline-flex items-center justify-center gap-1.5 transition-all shadow-xs"
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Seja Nosso Parceiro · Anunciar Aqui</span>
+                    <span>Quero Ser Parceiro</span>
                   </a>
                 ) : hasUnlockedClub ? (
                   <a
@@ -686,16 +800,16 @@ export const ParticipationsAndLoyaltyView: React.FC<ParticipationsAndLoyaltyView
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => onRedeemPartnerCoupon?.(coupon.id)}
-                    className="px-3.5 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-extrabold inline-flex items-center gap-1.5 transition-colors shadow-xs"
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-[var(--brand-accent)] hover:brightness-105 text-[var(--brand-accent-ink)] text-xs font-extrabold inline-flex items-center justify-center gap-1.5 transition-all shadow-xs"
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Pedir c/ Desconto no Zap</span>
+                    <span>Resgatar no WhatsApp</span>
                   </a>
                 ) : (
                   <button
                     type="button"
                     onClick={onNavigateToGrid}
-                    className="px-3.5 py-2 rounded-xl bg-[#1D1D1F] hover:bg-[#333336] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-[#f5f7f3] text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <span>Comprar 1 Nº p/ Liberar</span>
                     <ArrowRight className="w-3.5 h-3.5" />
