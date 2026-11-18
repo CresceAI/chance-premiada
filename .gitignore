@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 .aistudio/
+docs/ARQUITETURA_E_REGRAS_INTERNAS.md
+docs/SKILL_PLAYBOOK_ENGENHARIA.md
+docs/design-references/
